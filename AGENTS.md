@@ -48,3 +48,34 @@ Read these files before proceeding.
   - Red: write the failing test first.
   - Green: write the simplest code that passes. No premature abstraction.
   - Refactor: remove duplication, improve clarity, introduce design patterns only when the existing code complexity warrants them. Patterns are a refactoring tool, not a starting point.
+- **After green, before commit: perform a gap review** (see `claude-memory/insights.md` for the checklist). Add real-world edge cases: type coercion, whitespace, unicode, boundary values, extra input, ordering, null handling, encoding, lifecycle states.
+
+## Architecture Guardrails
+
+### Deterministic / LLM Boundary
+- `rtm_builder.py`, `rtm_scorer.py`, and `confidence_scorer.py` must NEVER import or call LLM code.
+- Deterministic modules must be fully testable without mocks, network, or API keys.
+- The deterministic layer must pass validation before the LLM layer is invoked during a pipeline run.
+
+### LLM Response Handling
+- All LLM responses must be parsed into structured `TestCase` / `ReviewFeedback` objects before use.
+- Unparseable or truncated responses are generation failures — do not score partial output.
+- Check `finish_reason` (or equivalent) on every LLM response; reject truncated completions.
+
+### Cross-Model Communication
+- Generator and Reviewer communicate via a structured intermediate format (`ReviewFeedback` schema), not free-form prose.
+- Each LLM call has a single responsibility: Generator ONLY generates; Reviewer ONLY reviews. Never combine.
+
+### Input Safety
+- User-supplied story/AC content is fenced with clear delimiters when injected into prompts.
+- Validate input structure before prompt injection — reject malformed YAML at the input_loader boundary.
+- API keys via environment variables only (`SKULD_ANTHROPIC_KEY`, `SKULD_OPENAI_KEY`); never in code or config files.
+
+### Cost Control
+- Enforce `max_tokens_per_run` budget (default: 32K total across both LLM passes).
+- Warn at >15 ACs in input; reject at >30 (configurable via `config.max_acceptance_criteria`).
+
+### Scope Fence (MVP)
+- MVP produces test case specifications in tabular format. No automation code generation.
+- Coverage types: functional, negative, edge-case only. No NFR, no accessibility.
+- Single refinement pass only. No iterative loop.

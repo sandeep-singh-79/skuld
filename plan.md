@@ -341,7 +341,7 @@ src/skuld/
 - [x] T4: Output validator (validate generated output against assertions YAML) — 15 tests passing
 
 ### Phase 2 — Deterministic Engine (No LLM)
-- [ ] T5: RTM builder (given test cases + ACs, build traceability entries per run)
+- [x] T5: RTM builder (given test cases + ACs, build traceability entries per run) — 23 tests passing
 - [ ] T5b: RTM store (persistent RTM: load, merge, save, query, gap history)
 - [ ] T6: RTM scorer (deterministic scoring: AC coverage, type distribution, orphans)
 - [ ] T7: Confidence scorer (combine RTM score + placeholder adversarial score)
@@ -635,7 +635,7 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 1 COMPLETE — Phase 2 (T5: RTM Builder) next |
-| Next Action | T5 — RTM builder (build traceability entries from test cases + ACs) |
-| Tests | 110 passing (43 models + 52 input_loader + 15 output_validator) |
+| Phase | Phase 2 (T5b: RTM Store next) |
+| Next Action | T5b — RTM store (persistent RTM: load, merge, save, query, gap history) |
+| Tests | 141 passing (43 models + 52 input_loader + 15 output_validator + 23 rtm_builder + 8 adversarial fixes) |
 | Blockers | None |

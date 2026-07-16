@@ -136,6 +136,7 @@ class ConfidenceScore:
     adversarial_score: float | None
     rtm_details: dict[str, Any]
     gaps: list[str]
+    tier: str = "low"  # high | medium | low
 
 
 @dataclass

@@ -146,3 +146,22 @@ class ReviewFeedback:
     missing_scenarios: list[str]
     quality_scores: dict[str, float]
     suggestions: list[str]
+
+
+@dataclass
+class MergeResult:
+    """Result of merging new RTM entries into a persistent store."""
+
+    added: int
+    superseded: int
+    conflicts: list[str]
+
+
+@dataclass
+class GapInfo:
+    """Structured info about a coverage gap."""
+
+    ac_id: str
+    story_id: str | None
+    missing_types: list[str]  # e.g. ["negative", "edge-case"]
+    gap_since: str | None  # ISO date string

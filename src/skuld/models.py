@@ -155,6 +155,7 @@ class MergeResult:
     added: int
     superseded: int
     conflicts: list[str]
+    retained: int = 0
 
 
 @dataclass

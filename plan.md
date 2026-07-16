@@ -343,7 +343,7 @@ src/skuld/
 ### Phase 2 — Deterministic Engine (No LLM)
 - [x] T5: RTM builder (given test cases + ACs, build traceability entries per run) — 23 tests passing
 - [x] T5b: RTM store (persistent RTM: load, merge, save, query, gap history) — 37 tests passing
-- [ ] T6: RTM scorer (deterministic scoring: AC coverage, type distribution, orphans)
+- [x] T6: RTM scorer (deterministic scoring: AC coverage, type distribution, orphans) — 39 tests passing
 - [ ] T7: Confidence scorer (combine RTM score + placeholder adversarial score)
 - [ ] T8: Renderer (output markdown / yaml / json from test cases + RTM + score)
 
@@ -635,7 +635,7 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 2 (T6: RTM Scorer next) |
-| Next Action | T6 — RTM scorer (deterministic scoring: AC coverage, type distribution, orphans) |
-| Tests | 178 passing |
+| Phase | Phase 2 (T7: Confidence Scorer next) |
+| Next Action | T7 — Confidence scorer (combine RTM score + placeholder adversarial score) |
+| Tests | 218 passing |
 | Blockers | None |

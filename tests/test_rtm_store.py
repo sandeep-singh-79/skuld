@@ -19,7 +19,7 @@ def _entry(
     ac_id: str = "AC-1",
     test_case_id: str = "TC-1",
     test_type: str = "functional",
-    story_id: str | None = "S-1",
+    story_id: str | None = None,
     status: str = "active",
     added_date: str | None = None,
     added_by_run: str | None = None,
@@ -127,6 +127,14 @@ class TestRTMStoreLoad:
         with pytest.raises(ValueError, match="exceeds maximum size"):
             RTMStore.load(str(p))
 
+    def test_unsupported_version_raises(self, tmp_path):
+        """RTM files with unsupported version are rejected."""
+        p = tmp_path / "rtm.yaml"
+        data = {"metadata": {"rtm_version": "2.0"}, "entries": []}
+        p.write_text(yaml.dump(data), encoding="utf-8")
+        with pytest.raises(ValueError, match="Unsupported RTM version"):
+            RTMStore.load(str(p))
+
 
 # ===================================================================
 # RTMStore.merge
@@ -199,20 +207,23 @@ class TestRTMStoreMerge:
         assert result.superseded == 1
         assert result.conflicts == []
 
-    def test_merge_different_story_no_conflict(self):
+    def test_merge_different_story_no_supersede(self):
+        """AC-level merge for S-2 does NOT supersede S-1 entries."""
         store = RTMStore()
         store.merge(
             [_entry(ac_id="AC-1", test_case_id="TC-1")],
             story_id="S-1",
             run_id="run-001",
         )
-        # Same AC-TC pair but from a different story context — still supersedes
+        # Same AC-TC pair but from a different story context — no supersede
         result = store.merge(
             [_entry(ac_id="AC-1", test_case_id="TC-1")],
             story_id="S-2",
             run_id="run-002",
         )
-        assert result.superseded == 1
+        assert result.superseded == 0
+        # Cross-story overlap warning emitted
+        assert len(result.conflicts) >= 1
 
     def test_intra_batch_duplicate_last_wins(self):
         """Two entries with same (ac_id, tc_id) in one merge — last wins, no self-supersede."""
@@ -226,8 +237,8 @@ class TestRTMStoreMerge:
         assert len(active) == 1
         assert active[0].test_type == "negative"  # last wins
 
-    def test_cross_story_supersede_reports_conflict(self):
-        """Superseding entry from different story appears in conflicts."""
+    def test_cross_story_overlap_reports_conflict(self):
+        """Merging an AC already covered by a different story emits overlap warning."""
         store = RTMStore()
         e1 = RTMEntry(ac_id="AC-1", test_case_id="TC-1", test_type="functional", story_id="S-1")
         store.merge([e1], story_id="S-1", run_id="run-1")
@@ -442,8 +453,8 @@ class TestRTMStoreWorkflows:
         assert summary["total_test_cases"] == 5
         assert summary["unique_acs"] == 5
 
-    def test_rerun_same_story_supersedes_old_entries(self):
-        """Re-generating tests for the same story should supersede, not duplicate."""
+    def test_rerun_same_story_supersedes_matching_ac_entries(self):
+        """Re-generating tests for the same story supersedes all entries for incoming ACs."""
         store = RTMStore()
         # First run: 3 test cases for story S-1
         store.merge(
@@ -457,7 +468,7 @@ class TestRTMStoreWorkflows:
         )
         assert len(store.active_entries) == 3
 
-        # Second run for same story: TC-1 and TC-3 regenerated, TC-2 dropped
+        # Second run for same story: AC-1 and AC-2 re-merged
         result = store.merge(
             [
                 _entry(ac_id="AC-1", test_case_id="TC-1", test_type="functional"),
@@ -466,15 +477,14 @@ class TestRTMStoreWorkflows:
             story_id="S-1",
             run_id="run-002",
         )
-        assert result.superseded == 2  # TC-1 and TC-3 superseded
+        # AC-level merge: all 3 old entries superseded (AC-1 had 2 entries, AC-2 had 1)
+        assert result.superseded == 3
         assert result.added == 2
-        # TC-2 from run-001 is still active (not superseded — different test case ID)
-        active_ids = {e.test_case_id for e in store.active_entries}
-        assert "TC-2" in active_ids
         # Active TC-1 and TC-3 should be from run-002
+        active_ids = {e.test_case_id for e in store.active_entries}
+        assert active_ids == {"TC-1", "TC-3"}
         for e in store.active_entries:
-            if e.test_case_id in ("TC-1", "TC-3"):
-                assert e.added_by_run == "run-002"
+            assert e.added_by_run == "run-002"
 
     def test_deprecate_then_readd(self):
         """Deprecate TC-1, later re-add it — both entries coexist, new one is active."""
@@ -539,3 +549,103 @@ class TestRTMStoreWorkflows:
         # Verify it can be loaded back
         reloaded = RTMStore.load(str(deep_path))
         assert len(reloaded.entries) == 1
+
+
+# ===================================================================
+# AC-level merge
+# ===================================================================
+
+
+class TestACLevelMerge:
+    def test_unchanged_acs_retained(self):
+        """When re-running a story with only some ACs changed, unchanged AC entries survive."""
+        store = RTMStore()
+        # First run: AC-1 and AC-2
+        store.merge([
+            _entry(ac_id="AC-1", test_case_id="TC-1", test_type="functional"),
+            _entry(ac_id="AC-2", test_case_id="TC-2", test_type="functional"),
+        ], story_id="S-1", run_id="run-1")
+
+        # Second run: only AC-1 (AC-2 unchanged, not in new batch)
+        result = store.merge([
+            _entry(ac_id="AC-1", test_case_id="TC-3", test_type="negative"),
+        ], story_id="S-1", run_id="run-2")
+
+        active = [e for e in store.entries if e.status == "active"]
+        # AC-1 should have TC-3 (new), AC-2 should still have TC-2 (retained)
+        ac1_active = [e for e in active if e.ac_id == "AC-1"]
+        ac2_active = [e for e in active if e.ac_id == "AC-2"]
+        assert len(ac1_active) == 1
+        assert ac1_active[0].test_case_id == "TC-3"
+        assert len(ac2_active) == 1
+        assert ac2_active[0].test_case_id == "TC-2"
+        assert result.retained > 0
+
+    def test_force_supersedes_all_story_entries(self):
+        """force=True supersedes ALL entries for the story, including unchanged ACs."""
+        store = RTMStore()
+        store.merge([
+            _entry(ac_id="AC-1", test_case_id="TC-1", test_type="functional"),
+            _entry(ac_id="AC-2", test_case_id="TC-2", test_type="functional"),
+        ], story_id="S-1", run_id="run-1")
+
+        result = store.merge([
+            _entry(ac_id="AC-1", test_case_id="TC-3", test_type="negative"),
+        ], story_id="S-1", run_id="run-2", force=True)
+
+        active = [e for e in store.entries if e.status == "active"]
+        # Only TC-3 should be active (AC-2's TC-2 was force-superseded)
+        assert len(active) == 1
+        assert active[0].test_case_id == "TC-3"
+        assert result.retained == 0
+
+    def test_different_story_entries_untouched(self):
+        """AC-level merge for S-1 should not affect S-2 entries."""
+        store = RTMStore()
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-1")], story_id="S-1", run_id="run-1")
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-2")], story_id="S-2", run_id="run-2")
+
+        # Re-merge S-1 with new test
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-3")], story_id="S-1", run_id="run-3")
+
+        active = [e for e in store.entries if e.status == "active"]
+        s2_active = [e for e in active if e.story_id == "S-2"]
+        assert len(s2_active) == 1
+        assert s2_active[0].test_case_id == "TC-2"  # untouched
+
+
+# ===================================================================
+# Cross-story overlap
+# ===================================================================
+
+
+class TestCrossStoryOverlap:
+    def test_overlap_warning_emitted(self):
+        """When an AC is already covered by a different story, warn in conflicts."""
+        store = RTMStore()
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-1")], story_id="S-1", run_id="run-1")
+
+        result = store.merge([_entry(ac_id="AC-1", test_case_id="TC-2")], story_id="S-2", run_id="run-2")
+
+        assert len(result.conflicts) > 0
+        assert any("AC-1" in c and "S-1" in c for c in result.conflicts)
+
+    def test_no_overlap_warning_for_same_story(self):
+        """Re-merging the same story should NOT produce overlap warnings."""
+        store = RTMStore()
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-1")], story_id="S-1", run_id="run-1")
+
+        result = store.merge([_entry(ac_id="AC-1", test_case_id="TC-2")], story_id="S-1", run_id="run-2")
+
+        assert len(result.conflicts) == 0
+
+    def test_overlap_does_not_block_merge(self):
+        """Overlap warning is advisory — merge still proceeds."""
+        store = RTMStore()
+        store.merge([_entry(ac_id="AC-1", test_case_id="TC-1")], story_id="S-1", run_id="run-1")
+
+        result = store.merge([_entry(ac_id="AC-1", test_case_id="TC-2")], story_id="S-2", run_id="run-2")
+
+        assert result.added == 1
+        active = [e for e in store.entries if e.status == "active"]
+        assert len(active) == 2  # both coexist

@@ -44,6 +44,11 @@ class RTMStore:
             return store
 
         store._metadata = data.get("metadata", store._metadata)
+
+        version = store._metadata.get("rtm_version", "unknown")
+        if version != "1.0":
+            raise ValueError(f"Unsupported RTM version '{version}' in '{path}' (expected '1.0')")
+
         required_keys = ("ac_id", "test_case_id", "test_type")
         for i, raw in enumerate(data.get("entries", [])):
             for key in required_keys:
@@ -87,7 +92,10 @@ class RTMStore:
                 yaml.dump(data, fh, default_flow_style=False, sort_keys=False)
             os.replace(tmp_path, path)
         except BaseException:
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
             raise
 
     # ------------------------------------------------------------------
@@ -99,16 +107,23 @@ class RTMStore:
         new_entries: list[RTMEntry],
         story_id: str,
         run_id: str,
+        force: bool = False,
     ) -> MergeResult:
         """Merge new entries from a generation run.
 
         - Adds each entry with *run_id*, today's date, and ``status="active"``.
-        - If an active entry with the same ``(ac_id, test_case_id)`` exists,
-          the old entry is marked ``"superseded"``.
+        - ``force=False`` (default): AC-level merge — only supersedes existing
+          active entries whose ``ac_id`` is in the incoming batch AND whose
+          ``story_id`` matches.  Entries for ACs not in the batch are retained.
+        - ``force=True``: supersedes ALL active entries for the *story_id*
+          (the legacy full-regeneration behaviour).
+        - Cross-story overlap: if an incoming AC already has active entries
+          from a *different* story, a warning is appended to ``conflicts``.
         """
         today = datetime.date.today().isoformat()
         added = 0
         superseded = 0
+        retained = 0
         conflicts: list[str] = []
 
         # Deduplicate: last entry wins for same (ac_id, test_case_id)
@@ -117,22 +132,54 @@ class RTMStore:
             seen[(entry.ac_id, entry.test_case_id)] = entry
         deduped = list(seen.values())
 
-        for incoming in deduped:
-            # Supersede any active duplicate
+        incoming_ac_ids = {e.ac_id for e in deduped}
+
+        # --- Cross-story overlap warnings ---
+        # Build map: ac_id → story_id for active entries from OTHER stories
+        cross_story_map: dict[str, str] = {}
+        for existing in self._entries:
+            if (
+                existing.status == "active"
+                and existing.story_id
+                and existing.story_id != story_id
+                and existing.ac_id in incoming_ac_ids
+            ):
+                cross_story_map.setdefault(existing.ac_id, existing.story_id)
+
+        for ac_id, other_story in cross_story_map.items():
+            conflicts.append(f"{ac_id} already covered by story {other_story}")
+
+        # --- Supersede phase ---
+        if force:
+            # Force mode: supersede ALL active entries for this story_id
+            for existing in self._entries:
+                if existing.status == "active" and existing.story_id == story_id:
+                    existing.status = "superseded"
+                    superseded += 1
+        else:
+            # AC-level merge: only supersede entries whose ac_id is in the
+            # incoming batch AND belong to the same story_id
             for existing in self._entries:
                 if (
                     existing.status == "active"
-                    and existing.ac_id == incoming.ac_id
-                    and existing.test_case_id == incoming.test_case_id
+                    and existing.story_id == story_id
+                    and existing.ac_id in incoming_ac_ids
                 ):
                     existing.status = "superseded"
                     superseded += 1
-                    if existing.story_id and existing.story_id != (incoming.story_id or story_id):
-                        conflicts.append(
-                            f"{incoming.ac_id}/{incoming.test_case_id}: superseded entry from story "
-                            f"'{existing.story_id}' by story '{incoming.story_id or story_id}'"
-                        )
 
+            # Count retained: active entries for this story whose AC is NOT in
+            # the incoming batch (they survive untouched)
+            for existing in self._entries:
+                if (
+                    existing.status == "active"
+                    and existing.story_id == story_id
+                    and existing.ac_id not in incoming_ac_ids
+                ):
+                    retained += 1
+
+        # --- Add phase ---
+        for incoming in deduped:
             self._entries.append(
                 RTMEntry(
                     ac_id=incoming.ac_id,
@@ -146,7 +193,12 @@ class RTMStore:
             )
             added += 1
 
-        return MergeResult(added=added, superseded=superseded, conflicts=conflicts)
+        return MergeResult(
+            added=added,
+            superseded=superseded,
+            conflicts=conflicts,
+            retained=retained,
+        )
 
     # ------------------------------------------------------------------
     # Deprecate

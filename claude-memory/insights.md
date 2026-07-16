@@ -36,3 +36,34 @@ Internal modules (rtm_builder, rtm_scorer, renderer, etc.) receive validated dat
 ### Anti-pattern
 - Don't add tests for impossible states (e.g., testing that a dataclass field doesn't accept `None` when the type annotation is `str` — Python doesn't enforce this at runtime anyway)
 - Focus on user-facing inputs at system boundaries, not internal-only data flows
+
+## Per-Task Completion Workflow (Established T5/T5b)
+
+After TDD green + gap review, each task goes through this full cycle before commit:
+
+### 1. TDD (red → green → refactor)
+- Write failing tests, implement, clean up
+
+### 2. Adversarial review (subagent)
+- Different "perspective" reviews for correctness, contract alignment, missing tests, API design
+- Plan fixes from findings, implement, validate
+
+### 3. User-perspective review
+- Think about how a real user would interact with this module through the pipeline/CLI
+- Focus on **workflow scenarios**: multi-sprint accumulation, story rollover, re-runs, partial updates
+- Ask: "What would a QE lead do with this over 3 months of sprints?"
+- Internal modules: focus on data flow scenarios (what upstream sends, what downstream expects)
+- Boundary modules: also add real-world edge cases (encoding, types, whitespace)
+
+### 4. Security/logic review
+- OWASP-relevant checks: injection, deserialization, path traversal, DoS
+- Reference safety: mutable state exposure, shared references between raw/normalized
+- Schema versioning: reject unknown versions on persistent file load
+- Atomic I/O: temp file + replace pattern for writes
+- Resource limits: file size caps, entry count caps
+
+### 5. Deferred issues tracking
+- Issues identified but not fixed go to `claude-memory/notes.md` with severity, reason, and target version
+- Nothing gets silently ignored — every finding is recorded or fixed
+
+### Commit only after all 5 steps complete for the task.

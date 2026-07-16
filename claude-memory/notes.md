@@ -23,7 +23,21 @@ Temporary working notes, open questions, in-flight thinking.
 |---|----------|-------|-----------------|--------|
 | T5-6 | MEDIUM | `find_gaps` returns `list[str]` — scorer needs structured data | Scorer computes from `rtm_entries` directly; `find_gaps` is for human display only | V2 if needed |
 
-### From T5b Security Review
+### From T6 Adversarial Review
+
+| # | Severity | Issue | Deferred reason | Target |
+|---|----------|-------|-----------------|--------|
+| T6-4 | LOW-MED | Orphan penalty too weak (max -10 points) — 50% orphans only costs 5 points | Weight tuning is calibration; need real-world data to set properly | V2 calibration |
+| T6-5 | LOW-MED | Duplicate `test_case_id` inflates orphan dilution — can game the score | Data comes from `build_rtm` which doesn't produce duplicates; only matters if manual entries bypass builder | V2 |
+
+### From T6 User-Perspective Review
+
+| # | Severity | Issue | Deferred reason | Target |
+|---|----------|-------|-----------------|--------|
+| T6-U3 | MEDIUM | Under-declaring ACs inflates score — scorer trusts ac_list blindly | Pipeline integrity is E2E flow's job (T13), not scorer's | T13 |
+| T6-U4 | MEDIUM | Sprint-over-sprint comparison misleads on scope growth vs regression | Needs per-story scoring or delta tracking; design decision for V2 | V2 |
+| T6-U5 | LOW | "Medium" tier too broad (50–79.9) for ship/no-ship decisions | Needs real-world calibration data; 4-tier model possible in V2 | V2 |
+| T6-U1 | LOW | Presence-based distribution gives full credit easily (1 of each = 1.0) | Intentional trade-off: prevents "adding tests lowers score" bug; documenting as design choice | Accepted |
 
 | # | Severity | Issue | Deferred reason | Target |
 |---|----------|-------|-----------------|--------|

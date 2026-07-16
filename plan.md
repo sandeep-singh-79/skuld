@@ -344,7 +344,7 @@ src/skuld/
 - [x] T5: RTM builder (given test cases + ACs, build traceability entries per run) — 23 tests passing
 - [x] T5b: RTM store (persistent RTM: load, merge, save, query, gap history) — 37 tests passing
 - [x] T6: RTM scorer (deterministic scoring: AC coverage, type distribution, orphans) — 39 tests passing
-- [ ] T7: Confidence scorer (combine RTM score + placeholder adversarial score)
+- [x] T7: Confidence scorer (combine RTM score + placeholder adversarial score) — 23 tests passing
 - [ ] T8: Renderer (output markdown / yaml / json from test cases + RTM + score)
 
 ### Phase 3 — LLM Generation + Adversarial Review
@@ -635,7 +635,7 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 2 (T7: Confidence Scorer next) |
-| Next Action | T7 — Confidence scorer (combine RTM score + placeholder adversarial score) |
-| Tests | 218 passing |
+| Phase | Phase 2 (T8: Renderer next) |
+| Next Action | T8 — Renderer (output markdown / yaml / json from test cases + RTM + score) |
+| Tests | 245 passing |
 | Blockers | None |

@@ -76,3 +76,19 @@ After TDD green + gap review, each task goes through this full cycle before comm
 - Nothing gets silently ignored — every finding is recorded or fixed
 
 ### Commit only after all 6 steps complete for the task.
+
+### Execution Rule (Established T11)
+Each step MUST be a separate subagent invocation — never combined into one call. This ensures:
+- Each step's output is independently verifiable
+- No self-reporting ("I did all 6 steps") — each is visible in the conversation
+- Gaps caught by verification (T11 missed 5 items when steps were combined)
+
+**Sequence per task:**
+1. Subagent 1: TDD implementation (red → green)
+2. Subagent 2: Adversarial review (finds bugs/gaps)
+3. Opus plans fixes from adversarial findings
+4. Subagent 3: Implement fixes
+5. Subagent 4: User-perspective + Security review
+6. Opus plans fixes from findings
+7. Subagent 5: Implement fixes + simplify
+8. Record deferred items → commit

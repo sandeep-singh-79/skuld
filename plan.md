@@ -394,7 +394,7 @@ src/skuld/
 - [x] T9b: Comment filter (standalone module — rule-based noise removal from story comments) — 18 tests passing
 - [x] T10: Prompt builder (generator prompt + reviewer prompt templates, includes filtered comments as context) — 24 tests passing
 - [x] T11: Test generator (Pass 1 — generate from ACs + comments; Pass 2 — refine from review) — 23 tests passing
-- [ ] T12: Adversarial reviewer (cross-model review, produce review feedback + score)
+- [x] T12: Adversarial reviewer (cross-model review, produce review feedback + score) — 25 tests passing
 
 ### Phase 4 — Integration
 - [ ] T13: End-to-end flow (wire: input → generate → review → refine → RTM build → RTM merge → score → render)
@@ -678,7 +678,7 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 2 COMPLETE — Phase 3 (T9: LLM Client) next |
-| Next Action | T9 — LLM client abstraction (pluggable: Claude, GPT, Ollama) |
-| Tests | 268 passing |
+| Phase | Phase 3 COMPLETE — Phase 4 (T13: End-to-End Flow) next |
+| Next Action | T13 — End-to-end flow (wire full pipeline) |
+| Tests | 394 passing |
 | Blockers | None |

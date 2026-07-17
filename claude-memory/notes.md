@@ -69,3 +69,10 @@ Temporary working notes, open questions, in-flight thinking.
 |---|----------|-------|-----------------|--------|
 | T10-D1 | LOW | Prompt token estimation (budget-aware prompt construction) | Integrate during T11 LLM flow | T11 |
 | T10-D2 | LOW | Config-driven model-specific prompt tuning (Claude vs GPT formatting) | Over-engineering for MVP; all models handle the current format | Post-MVP |
+
+### From T12 Workloop
+
+| # | Severity | Issue | Deferred reason | Target |
+|---|----------|-------|-----------------|--------|
+| T12-D1 | LOW | Rubber-stamp LLM detection (empty flags + uniform quality = suspicious) | Heuristic design needed; cross-model review reduces probability | V2 |
+| T12-D2 | LOW | No size cap on parsed list fields (flagged_tests, missing_scenarios) | max_tokens at HTTP layer provides practical bound | V2 |

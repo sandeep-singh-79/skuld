@@ -53,12 +53,13 @@ Read these files before proceeding.
   - Green: write the simplest code that passes. No premature abstraction.
   - Refactor: remove duplication, improve clarity, introduce design patterns only when the existing code complexity warrants them. Patterns are a refactoring tool, not a starting point.
 - **After green, before commit: perform the full 6-step completion workflow** (see `claude-memory/insights.md` — "Per-Task Completion Workflow"):
-  1. TDD (red → green → refactor)
-  2. Adversarial review (subagent finds bugs/gaps)
-  3. User-perspective review (workflow scenarios a real QE lead would trigger)
-  4. Security/logic review (OWASP, references, schema versioning, I/O safety)
-  5. Simplify (flatten nesting, remove dead code, ask "can a junior read this in 30 seconds?")
+  1. TDD (red → green → refactor) — **separate subagent**
+  2. Adversarial review (subagent finds bugs/gaps) — **separate subagent**
+  3. User-perspective review (workflow scenarios a real QE lead would trigger) — **separate subagent**
+  4. Security/logic review (OWASP, references, schema versioning, I/O safety) — **combined with step 3**
+  5. Simplify (flatten nesting, remove dead code, ask "can a junior read this in 30 seconds?") — **separate subagent**
   6. Deferred issues tracking (unresolved findings → `claude-memory/notes.md`)
+  - **RULE:** Each step is a SEPARATE subagent call. Never combine all steps into one invocation. Opus plans fixes between steps.
 
 ## Architecture Guardrails
 

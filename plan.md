@@ -138,15 +138,50 @@ comments:
   - "QA: need to handle SMS delivery failure gracefully"
   - "PM: biometric login explicitly out of scope for v1"
 
+# Optional: domain context for industry-relevant test generation
+domain_context:
+  industry: "insurance"
+  application_type: "claims management portal"
+  users: "field adjusters on tablets with intermittent connectivity"
+  compliance: ["HIPAA", "state insurance regulations"]
+  business_rules:
+    - "Claims over $10K require supervisor approval"
+    - "All adjuster actions must be audit-logged"
+    - "PII must never appear in client-side logs"
+
 # Optional: user-supplied constraints
 config:
-  generator_model: "claude"       # default: claude
-  reviewer_model: "gpt"          # default: gpt (must differ from generator)
-  min_negative_per_ac: 1         # default: 1
-  min_edge_case_per_ac: 1        # default: 1
-  output_format: "markdown"      # markdown | json (default: markdown)
-  filter_comments: true          # default: true — run noise filter on comments
+  # Simple mode — top-level model selection
+  generator_model: "claude-sonnet-4"    # default: claude-sonnet-4
+  reviewer_model: "gpt-5.5"            # default: gpt-5.5 (must differ from generator)
+  min_negative_per_ac: 1               # default: 1
+  min_edge_case_per_ac: 1              # default: 1
+  output_format: "markdown"            # markdown | json (default: markdown)
+  filter_comments: true                # default: true — run noise filter on comments
+
+  # Advanced mode — per-phase model routing (optional, overrides top-level)
+  model_routing:
+    generator:
+      model: "claude-sonnet-4"
+      provider: "anthropic"
+      temperature: 0.7
+      thinking_effort: "high"          # high | medium | low
+    reviewer:
+      model: "gpt-5.5"
+      provider: "openai"
+      temperature: 0.2
+      thinking_effort: "high"
+    refinement:
+      model: "claude-sonnet-4"         # same as generator — consistency
+      provider: "anthropic"
+      temperature: 0.5
+      thinking_effort: "medium"
 ```
+
+**Config resolution order:**
+1. `model_routing.{phase}` if present → full per-phase control
+2. Else top-level `generator_model`/`reviewer_model` with default temperature/thinking
+3. Else built-in defaults (claude-sonnet-4 / gpt-5.5)
 
 ### Optional Input: QEStrategyForge Strategy Output
 
@@ -357,7 +392,7 @@ src/skuld/
 ### Phase 3 — LLM Generation + Adversarial Review
 - [x] T9: LLM client abstraction (pluggable: Claude, GPT, Ollama) — 24 tests passing
 - [x] T9b: Comment filter (standalone module — rule-based noise removal from story comments) — 18 tests passing
-- [ ] T10: Prompt builder (generator prompt + reviewer prompt templates, includes filtered comments as context)
+- [x] T10: Prompt builder (generator prompt + reviewer prompt templates, includes filtered comments as context) — 24 tests passing
 - [ ] T11: Test generator (Pass 1 — generate from ACs + comments; Pass 2 — refine from review)
 - [ ] T12: Adversarial reviewer (cross-model review, produce review feedback + score)
 

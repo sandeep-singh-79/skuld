@@ -62,3 +62,10 @@ Temporary working notes, open questions, in-flight thinking.
 | T8-D3 | LOW | HTML/markdown injection in `_escape_cell` (XSS via markdown preview) | Output consumed by QE leads in editors, not web-served | V2 (if web-published) |
 | T8-D4 | LOW | Collapsible sections for large suites (`<details>` tags) | Markdown doesn't natively support; defer until 50+ test reports | V2 |
 | T9-D1 | LOW | `finish_reason` field in GenerationResponse | Wire when T11 (generator) uses it for truncation detection | T11 |
+
+### From T10 Workloop
+
+| # | Severity | Issue | Deferred reason | Target |
+|---|----------|-------|-----------------|--------|
+| T10-D1 | LOW | Prompt token estimation (budget-aware prompt construction) | Integrate during T11 LLM flow | T11 |
+| T10-D2 | LOW | Config-driven model-specific prompt tuning (Claude vs GPT formatting) | Over-engineering for MVP; all models handle the current format | Post-MVP |

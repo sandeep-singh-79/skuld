@@ -18,11 +18,12 @@ DEFAULT_MAX_AC_COUNT = 30
 AC_WARNING_THRESHOLD = 15
 
 DEFAULT_CONFIG = {
-    "generator_model": "claude",
-    "reviewer_model": "gpt",
+    "generator_model": "claude-sonnet-4",
+    "reviewer_model": "gpt-5.5",
     "min_negative_per_ac": 1,
     "min_edge_case_per_ac": 1,
     "output_format": "markdown",
+    "filter_comments": True,
 }
 
 # ---------------------------------------------------------------------------
@@ -212,6 +213,15 @@ def validate_raw(raw: Any) -> dict[str, Any]:
 
     if strategy_ref is not None:
         normalized["strategy_ref"] = strategy_ref
+
+    # Pass through optional fields
+    comments = raw.get("comments")
+    if comments and isinstance(comments, list):
+        normalized["comments"] = comments
+
+    domain_context = raw.get("domain_context")
+    if domain_context and isinstance(domain_context, dict):
+        normalized["domain_context"] = domain_context
 
     if warnings:
         normalized["_warnings"] = warnings

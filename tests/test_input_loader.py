@@ -273,8 +273,8 @@ class TestConfigDefaults:
     def test_missing_config_gets_defaults(self):
         result = validate_raw(VALID_INPUT)
         config = result["config"]
-        assert config["generator_model"] == "claude"
-        assert config["reviewer_model"] == "gpt"
+        assert config["generator_model"] == "claude-sonnet-4"
+        assert config["reviewer_model"] == "gpt-5.5"
         assert config["min_negative_per_ac"] == 1
         assert config["min_edge_case_per_ac"] == 1
         assert config["output_format"] == "markdown"
@@ -293,12 +293,12 @@ class TestConfigDefaults:
         data = {**VALID_INPUT, "config": {"generator_model": "ollama"}}
         result = validate_raw(data)
         assert result["config"]["generator_model"] == "ollama"
-        assert result["config"]["reviewer_model"] == "gpt"  # default
+        assert result["config"]["reviewer_model"] == "gpt-5.5"  # default
 
     def test_explicit_null_config_gets_defaults(self):
         data = {**VALID_INPUT, "config": None}
         result = validate_raw(data)
-        assert result["config"]["generator_model"] == "claude"
+        assert result["config"]["generator_model"] == "claude-sonnet-4"
 
 
 # ---------------------------------------------------------------------------

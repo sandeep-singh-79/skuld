@@ -345,7 +345,7 @@ src/skuld/
 - [x] T5b: RTM store (persistent RTM: load, merge, save, query, gap history) — 37 tests passing
 - [x] T6: RTM scorer (deterministic scoring: AC coverage, type distribution, orphans) — 39 tests passing
 - [x] T7: Confidence scorer (combine RTM score + placeholder adversarial score) — 23 tests passing
-- [ ] T8: Renderer (output markdown / yaml / json from test cases + RTM + score)
+- [x] T8: Renderer (output markdown / json from test cases + RTM + score) — 23 tests passing
 
 ### Phase 3 — LLM Generation + Adversarial Review
 - [ ] T9: LLM client abstraction (pluggable: Claude, GPT, Ollama)
@@ -635,7 +635,7 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 2 (T8: Renderer next) |
-| Next Action | T8 — Renderer (output markdown / yaml / json from test cases + RTM + score) |
-| Tests | 245 passing |
+| Phase | Phase 2 COMPLETE — Phase 3 (T9: LLM Client) next |
+| Next Action | T9 — LLM client abstraction (pluggable: Claude, GPT, Ollama) |
+| Tests | 268 passing |
 | Blockers | None |

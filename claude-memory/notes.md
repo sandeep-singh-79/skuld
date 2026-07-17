@@ -52,3 +52,13 @@ Temporary working notes, open questions, in-flight thinking.
 |---|-------|-----------------|--------|
 | OL-1 | Semantic overlap detection — two stories with similar (not identical) ACs | Requires embeddings or NLP; MVP uses exact AC ID match for warnings | V2 / Orchestrator |
 | OL-2 | Cross-story AC registry — shared AC IDs managed at project level | Orchestrator concern, not individual tool | Orchestrator |
+
+### From T8/T9/T9b Workloop (Steps 3-6)
+
+| # | Severity | Issue | Deferred reason | Target |
+|---|----------|-------|-----------------|--------|
+| T8-D1 | LOW | Markdown summary header for 50+ test cases (count by type at top) | UX improvement — surface when real usage shows the need | V2 |
+| T8-D2 | LOW | JSON schema version field for downstream stability | Decide when first external consumer exists | V2 |
+| T8-D3 | LOW | HTML/markdown injection in `_escape_cell` (XSS via markdown preview) | Output consumed by QE leads in editors, not web-served | V2 (if web-published) |
+| T8-D4 | LOW | Collapsible sections for large suites (`<details>` tags) | Markdown doesn't natively support; defer until 50+ test reports | V2 |
+| T9-D1 | LOW | `finish_reason` field in GenerationResponse | Wire when T11 (generator) uses it for truncation detection | T11 |

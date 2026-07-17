@@ -87,6 +87,7 @@ def build_generator_prompt(
     acceptance_criteria: list[dict],
     config: dict,
     comments: list[str] | None = None,
+    domain_context: str | None = None,
 ) -> GenerationRequest:
     """Build the Pass 1 generator prompt.
 
@@ -121,6 +122,11 @@ def build_generator_prompt(
         comment_text = "\n".join(f"- {c}" for c in comments)
         parts.append("")
         parts.append(_fence("comments", comment_text))
+
+    # Optional domain context
+    if domain_context:
+        parts.append("")
+        parts.append(_fence("domain_context", domain_context))
 
     # Config constraints
     min_neg = config.get("min_negative_per_ac", 1)

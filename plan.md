@@ -393,7 +393,7 @@ src/skuld/
 - [x] T9: LLM client abstraction (pluggable: Claude, GPT, Ollama) — 24 tests passing
 - [x] T9b: Comment filter (standalone module — rule-based noise removal from story comments) — 18 tests passing
 - [x] T10: Prompt builder (generator prompt + reviewer prompt templates, includes filtered comments as context) — 24 tests passing
-- [ ] T11: Test generator (Pass 1 — generate from ACs + comments; Pass 2 — refine from review)
+- [x] T11: Test generator (Pass 1 — generate from ACs + comments; Pass 2 — refine from review) — 23 tests passing
 - [ ] T12: Adversarial reviewer (cross-model review, produce review feedback + score)
 
 ### Phase 4 — Integration

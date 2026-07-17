@@ -68,19 +68,10 @@ def compute_confidence_from_detailed(
     # Preserve RTM tier in details for reference
     rtm_details["rtm_tier"] = rtm_tier
 
-    result = compute_confidence(
+    return compute_confidence(
         rtm_score=composite,
         adversarial_score=adversarial_score,
         gaps=gaps,
         rtm_details=rtm_details,
         weights=weights,
-    )
-    # Tier is derived from overall score, not RTM tier
-    return ConfidenceScore(
-        overall=result.overall,
-        rtm_score=result.rtm_score,
-        adversarial_score=result.adversarial_score,
-        rtm_details=result.rtm_details,
-        gaps=result.gaps,
-        tier=result.tier,
     )

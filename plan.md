@@ -132,13 +132,20 @@ acceptance_criteria:
     description: "User sees meaningful error message for expired MFA code"
     criticality: low
 
+# Optional: story comments for richer edge-case generation
+comments:
+  - "Dev: what about session timeout during MFA flow?"
+  - "QA: need to handle SMS delivery failure gracefully"
+  - "PM: biometric login explicitly out of scope for v1"
+
 # Optional: user-supplied constraints
 config:
   generator_model: "claude"       # default: claude
   reviewer_model: "gpt"          # default: gpt (must differ from generator)
   min_negative_per_ac: 1         # default: 1
   min_edge_case_per_ac: 1        # default: 1
-  output_format: "markdown"      # markdown | yaml | json (default: markdown)
+  output_format: "markdown"      # markdown | json (default: markdown)
+  filter_comments: true          # default: true — run noise filter on comments
 ```
 
 ### Optional Input: QEStrategyForge Strategy Output
@@ -316,14 +323,14 @@ src/skuld/
 ├── models.py               # Story, AcceptanceCriterion, TestCase, RTMEntry, RTMStore, ConfidenceScore
 ├── input_loader.py         # Parse + validate story_input.yaml
 ├── output_validator.py     # Validate output against assertions
-├── ac_extractor.py         # Extract/normalise ACs from input
+├── comment_filter.py       # Filter story comments: remove noise, keep signal for test generation
 ├── test_generator.py       # LLM-based test case generation (Pass 1 + Pass 2)
 ├── adversarial_reviewer.py # LLM-based adversarial review (cross-model)
 ├── rtm_builder.py          # Build RTM from test cases + ACs (per-run)
 ├── rtm_store.py            # Persistent RTM: load, merge, save, query, gap history
 ├── rtm_scorer.py           # Deterministic scoring from RTM
 ├── confidence_scorer.py    # Combine RTM score + adversarial score
-├── renderer.py             # Render output (markdown / yaml / json)
+├── renderer.py             # Render output (markdown / json)
 ├── end_to_end_flow.py      # Orchestrate full pipeline
 ├── benchmark_runner.py     # Run benchmark scenarios
 ├── llm_client.py           # LLM provider abstraction
@@ -348,9 +355,10 @@ src/skuld/
 - [x] T8: Renderer (output markdown / json from test cases + RTM + score) — 23 tests passing
 
 ### Phase 3 — LLM Generation + Adversarial Review
-- [ ] T9: LLM client abstraction (pluggable: Claude, GPT, Ollama)
-- [ ] T10: Prompt builder (generator prompt + reviewer prompt templates)
-- [ ] T11: Test generator (Pass 1 — generate from ACs; Pass 2 — refine from review)
+- [x] T9: LLM client abstraction (pluggable: Claude, GPT, Ollama) — 24 tests passing
+- [x] T9b: Comment filter (standalone module — rule-based noise removal from story comments) — 18 tests passing
+- [ ] T10: Prompt builder (generator prompt + reviewer prompt templates, includes filtered comments as context)
+- [ ] T11: Test generator (Pass 1 — generate from ACs + comments; Pass 2 — refine from review)
 - [ ] T12: Adversarial reviewer (cross-model review, produce review feedback + score)
 
 ### Phase 4 — Integration

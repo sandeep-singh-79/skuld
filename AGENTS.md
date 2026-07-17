@@ -45,6 +45,7 @@ Read these files before proceeding.
 - **Design pattern gate:** introduce a pattern ONLY when (a) the code already exists and is getting complex, AND (b) you can name the specific problem the pattern solves. If you can't name the problem, you don't need the pattern.
 - **Reusability:** before writing a new helper, check the reusability index in `docs/REUSE-INDEX.md`. If a utility already exists (in this repo or siblings), use it. After creating a reusable utility, add it to the index.
 - **Extraction trigger:** when 3+ repos contain near-identical code for the same purpose, flag it for extraction to a shared base package. Track in top-level `claude-memory/notes.md`.
+- **Commit discipline:** one commit per task/functionality (max 2). All workloop steps (TDD + adversarial + fixes + simplify) land in a single commit. Squash if intermediate commits were made.
 - All code must be tested before it is marked complete.
 - Always report test pass/fail results and coverage details for code that was tested.
 - Follow TDD in the standard order: red → green → refactor.

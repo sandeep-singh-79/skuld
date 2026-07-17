@@ -154,9 +154,27 @@ def render_markdown(
     rtm_matrix: dict,
     confidence: ConfidenceScore,
     gaps: list[str],
+    story: dict | None = None,
+    acceptance_criteria: list[dict] | None = None,
 ) -> str:
     """Render full report as markdown. MUST pass output_validator.validate_output()."""
     sections: list[str] = []
+
+    # Story Context (optional)
+    if story:
+        sections.append("## Story Context")
+        sections.append("")
+        sections.append(f"**Story:** {story['id']} \u2014 {story.get('title', '')}")
+        sections.append("")
+        if story.get("description"):
+            sections.append(story["description"])
+            sections.append("")
+        if acceptance_criteria:
+            sections.append("**Acceptance Criteria:**")
+            for ac in acceptance_criteria:
+                crit = ac.get("criticality", "medium")
+                sections.append(f"- [{crit}] {ac['id']}: {ac['description']}")
+            sections.append("")
 
     # Test Cases
     sections.append("## Test Cases")
@@ -194,9 +212,15 @@ def render_json(
     rtm_matrix: dict,
     confidence: ConfidenceScore,
     gaps: list[str],
+    story: dict | None = None,
+    acceptance_criteria: list[dict] | None = None,
 ) -> str:
     """Render full report as JSON string (machine-readable)."""
     data = _build_report_data(test_cases, rtm_matrix, confidence, gaps)
+    if story is not None:
+        data["story"] = story
+    if acceptance_criteria is not None:
+        data["acceptance_criteria"] = acceptance_criteria
     return json.dumps(data, indent=2)
 
 
@@ -211,11 +235,13 @@ def render_report(
     confidence: ConfidenceScore,
     gaps: list[str],
     output_format: str = "markdown",
+    story: dict | None = None,
+    acceptance_criteria: list[dict] | None = None,
 ) -> str:
     """Dispatch to the appropriate renderer."""
     if output_format == "markdown":
-        return render_markdown(test_cases, rtm_matrix, confidence, gaps)
+        return render_markdown(test_cases, rtm_matrix, confidence, gaps, story=story, acceptance_criteria=acceptance_criteria)
     elif output_format == "json":
-        return render_json(test_cases, rtm_matrix, confidence, gaps)
+        return render_json(test_cases, rtm_matrix, confidence, gaps, story=story, acceptance_criteria=acceptance_criteria)
     else:
         raise ValueError(f"Unsupported output format: {output_format!r}")

@@ -397,7 +397,7 @@ src/skuld/
 - [x] T12: Adversarial reviewer (cross-model review, produce review feedback + score) — 25 tests passing
 
 ### Phase 4 — Integration
-- [ ] T13: End-to-end flow (wire: input → generate → review → refine → RTM build → RTM merge → score → render)
+- [x] T13: End-to-end flow (wire: input → generate → review → refine → RTM build → RTM merge → score → render) — 18 tests passing
 - [ ] T14: CLI (skuld generate, skuld rtm update/report/gaps/history, skuld benchmark, skuld score)
 - [ ] T15: Benchmarks (≥3 scenarios with input + assertions files)
 - [ ] T16: Coverage hardening (all modules ≥90%, all benchmarks green)

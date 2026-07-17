@@ -62,8 +62,17 @@ After TDD green + gap review, each task goes through this full cycle before comm
 - Atomic I/O: temp file + replace pattern for writes
 - Resource limits: file size caps, entry count caps
 
-### 5. Deferred issues tracking
+### 5. Simplify
+- After all fixes are applied, do a simplification pass
+- Ask: "Can a junior engineer read this function in 30 seconds?"
+- Flatten unnecessary nesting (early returns over deep if/else)
+- Remove dead code, unused imports, commented-out blocks
+- Collapse one-use helpers back inline if they obscure flow
+- Prefer plain data over clever abstractions
+- If a function is >20 lines, consider whether it's doing two things
+
+### 6. Deferred issues tracking
 - Issues identified but not fixed go to `claude-memory/notes.md` with severity, reason, and target version
 - Nothing gets silently ignored — every finding is recorded or fixed
 
-### Commit only after all 5 steps complete for the task.
+### Commit only after all 6 steps complete for the task.

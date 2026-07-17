@@ -42,18 +42,22 @@ Read these files before proceeding.
 - Follow SOLID where it helps clarity, testability, and change safety; do not force abstraction for its own sake.
 - Prefer reuse and extension of existing code before introducing new modules or abstractions.
 - Write new code only when it is genuinely required by the current slice or validation need.
+- **Design pattern gate:** introduce a pattern ONLY when (a) the code already exists and is getting complex, AND (b) you can name the specific problem the pattern solves. If you can't name the problem, you don't need the pattern.
+- **Reusability:** before writing a new helper, check the reusability index in `docs/REUSE-INDEX.md`. If a utility already exists (in this repo or siblings), use it. After creating a reusable utility, add it to the index.
+- **Extraction trigger:** when 3+ repos contain near-identical code for the same purpose, flag it for extraction to a shared base package. Track in top-level `claude-memory/notes.md`.
 - All code must be tested before it is marked complete.
 - Always report test pass/fail results and coverage details for code that was tested.
 - Follow TDD in the standard order: red → green → refactor.
   - Red: write the failing test first.
   - Green: write the simplest code that passes. No premature abstraction.
   - Refactor: remove duplication, improve clarity, introduce design patterns only when the existing code complexity warrants them. Patterns are a refactoring tool, not a starting point.
-- **After green, before commit: perform the full 5-step completion workflow** (see `claude-memory/insights.md` — "Per-Task Completion Workflow"):
+- **After green, before commit: perform the full 6-step completion workflow** (see `claude-memory/insights.md` — "Per-Task Completion Workflow"):
   1. TDD (red → green → refactor)
   2. Adversarial review (subagent finds bugs/gaps)
   3. User-perspective review (workflow scenarios a real QE lead would trigger)
   4. Security/logic review (OWASP, references, schema versioning, I/O safety)
-  5. Deferred issues tracking (unresolved findings → `claude-memory/notes.md`)
+  5. Simplify (flatten nesting, remove dead code, ask "can a junior read this in 30 seconds?")
+  6. Deferred issues tracking (unresolved findings → `claude-memory/notes.md`)
 
 ## Architecture Guardrails
 

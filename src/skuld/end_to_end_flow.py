@@ -143,17 +143,11 @@ def _fake_refined_cases_json(story_id: str, ac_ids: list[str]) -> str:
 # LLM client resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_llm_clients(config: dict, use_fake: bool) -> dict:
+def _resolve_llm_clients(config: dict) -> dict:
     """Returns {"generator": LLMClient, "reviewer": LLMClient, "refinement": LLMClient}.
 
-    Raises ValueError if use_fake=False and no API key is configured.
+    Called only when use_fake_llm=False. Raises ValueError if no API key is configured.
     """
-    if use_fake:
-        # Placeholder; real callers use _prepare_fake_clients instead.
-        inner = FakeLLMClient(responses=["placeholder", "placeholder", "placeholder"])
-        budgeted = BudgetedLLMClient(inner, max_tokens=32000)
-        return {"generator": budgeted, "reviewer": budgeted, "refinement": budgeted}
-
     # Check API keys
     anthropic_key = os.environ.get("SKULD_ANTHROPIC_KEY")
     openai_key = os.environ.get("SKULD_OPENAI_KEY")
@@ -222,7 +216,7 @@ def _run_from_package(
         clients = _prepare_fake_clients(normalized)
     else:
         try:
-            clients = _resolve_llm_clients(config, use_fake_llm)
+            clients = _resolve_llm_clients(config)
         except ValueError as exc:
             return FlowResult(exit_code=EXIT_INPUT_ERROR, message=str(exc), output_path=None)
 

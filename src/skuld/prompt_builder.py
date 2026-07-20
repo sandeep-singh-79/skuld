@@ -123,8 +123,11 @@ def build_generator_prompt(
         parts.append("")
         parts.append(_fence("comments", comment_text))
 
-    # Optional domain context
+    # Optional domain context — normalize dict to YAML string before fencing
     if domain_context:
+        if isinstance(domain_context, dict):
+            import yaml as _yaml
+            domain_context = _yaml.dump(domain_context, default_flow_style=False).rstrip()
         parts.append("")
         parts.append(_fence("domain_context", domain_context))
 

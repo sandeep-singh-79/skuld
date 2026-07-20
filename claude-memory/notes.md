@@ -4,6 +4,33 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
+## T15 Deferred Items (2026-07-20)
+
+### From adversarial review:
+- ~~**D15-1 (HIGH):**~~ `domain_context` dict serialization — **RESOLVED.** `prompt_builder` now serializes dict→YAML string before fencing. Benchmark inputs restored to spec-compliant shape with `domain_context` blocks.
+- **D15-2 (MEDIUM, accepted):** T15 benchmarks validate deterministic pipeline wiring only, not scenario-sensitive generation. Documented in `benchmarks/README.md`. Scenario-sensitive benchmarks deferred to V2.
+- **D15-3 (MEDIUM, deferred):** `strategy_ref` / HITL contract unbenchmarked. Belongs in a future T-slice when HITL gates are wired.
+- **D15-4 (MEDIUM, accepted):** T15 is green-path only. Red-path/degraded benchmark deferred to T16+.
+- **D15-5 (LOW):** Structural assertion duplication across 3 files. Revisit at 6+.
+- **D15-6 (LOW, resolved):** README updated — directory-mode and `benchmark_runner.py` references removed.
+
+### Fix Plan (Opus, 2026-07-20)
+
+| # | Action | Scope |
+|---|--------|-------|
+| D15-1 | Serialize dict `domain_context` → YAML string in `prompt_builder.build_generator_prompt()` before calling `_fence()`. Restore spec-mandated `domain_context` blocks in both `login-mfa` and `ecommerce-checkout` benchmark inputs. Add 2 unit tests (dict + string). | `src/skuld/prompt_builder.py`, `benchmarks/*.input.yaml`, `tests/test_prompt_builder.py` |
+| D15-2 | Document T15 as deterministic plumbing benchmarks in `benchmarks/README.md`. Scenario-sensitive benchmarks deferred to V2. | `benchmarks/README.md` |
+| D15-3 | No code change. `strategy_ref` enforcement belongs in a future T-slice when HITL gates are wired. Record as deferred. | notes only |
+| D15-4 | No code change. Accept T15 as green-path only. Red-path/degraded benchmark belongs in T16+. | notes only |
+| D15-5 | No action at 3 files. Revisit at 6+. | — |
+| D15-6 | Update `benchmarks/README.md`: remove directory-mode and `benchmark_runner.py` references, show correct CLI pattern. | `benchmarks/README.md` |
+
+**Acceptance criteria:** pipeline no longer crashes on dict `domain_context`; both richer benchmark inputs pass with `--dry-run`; README matches reality; full suite green.
+
+**Status: IMPLEMENTED (2026-07-20) — 503 tests passing.**
+
+---
+
 ## T14 CLI Adversarial Review Summary (2026-07-20)
 
 **Status:** All HIGH/MEDIUM findings resolved across 6 review rounds. Residual LOW items recorded. Ready for final whole-change-set review and commit.

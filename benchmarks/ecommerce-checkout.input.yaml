@@ -1,0 +1,47 @@
+story:
+  id: "SHOP-200"
+  title: "Checkout flow with payment processing"
+  description: |
+    As a customer, I want to complete checkout with payment so I can purchase items in my cart.
+
+acceptance_criteria:
+  - id: "AC-1"
+    description: "Cart total displays correctly with tax and shipping"
+    criticality: high
+  - id: "AC-2"
+    description: "Payment is processed via credit card gateway"
+    criticality: high
+  - id: "AC-3"
+    description: "Inventory is decremented after successful payment"
+    criticality: high
+  - id: "AC-4"
+    description: "Order confirmation email is sent within 60 seconds"
+    criticality: medium
+  - id: "AC-5"
+    description: "Payment failure shows actionable error with retry option"
+    criticality: medium
+  - id: "AC-6"
+    description: "Session timeout during checkout preserves cart contents"
+    criticality: medium
+  - id: "AC-7"
+    description: "Partial payment via gift card + credit card is supported"
+    criticality: low
+  - id: "AC-8"
+    description: "Shipping cost recalculates when address changes"
+    criticality: low
+
+comments:
+  - "Dev: payment gateway has 30s timeout — need to handle gracefully"
+  - "QA: test with empty cart edge case"
+  - "PM: international shipping is out of scope for v1"
+
+domain_context:
+  industry: "retail"
+  application_type: "e-commerce platform"
+  users: "online shoppers"
+
+config:
+  generator_model: "claude-sonnet-4"
+  reviewer_model: "gpt-4o"
+  filter_comments: true
+  output_format: "markdown"

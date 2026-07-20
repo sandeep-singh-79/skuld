@@ -76,6 +76,23 @@ class TestRunPipeline:
         assert result.message  # non-empty rendered output
         assert "## Test Cases" in result.message
 
+    def test_happy_path_has_numerical_confidence(self):
+        """Pipeline produces a confidence score within valid range (0-100)."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        # Confidence score should appear as a number in the output
+        assert "Overall Confidence:" in result.message
+        # Extract and validate the score is a real number in range
+        import re
+        match = re.search(r"Overall Confidence:\s*([\d.]+)", result.message)
+        assert match, "Overall Confidence value not found in output"
+        score = float(match.group(1))
+        assert 0.0 <= score <= 100.0, f"Score {score} outside valid range"
+        assert score > 0.0, "Score should be > 0 for a valid input with test cases"
+
     def test_input_error_bad_file(self, tmp_path):
         """Non-existent file returns EXIT_INPUT_ERROR."""
         from skuld.end_to_end_flow import run_pipeline

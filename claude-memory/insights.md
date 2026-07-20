@@ -92,3 +92,19 @@ Each step MUST be a separate subagent invocation — never combined into one cal
 6. Opus plans fixes from findings
 7. Subagent 5: Implement fixes + simplify
 8. Record deferred items → commit
+
+## Inherited from Sibling Agents (Phase 4 onwards)
+
+1. **Documentation ships with code.** If a task adds a CLI flag, workflow, or schema change — the affected doc (README, --help text) is updated in the same commit. Deferring docs creates knowledge debt. *(from IRO #18)*
+
+2. **Help text, implementation, and tests form a contract triangle.** All three must agree. Stale help text that describes removed/changed behaviour misleads users. When adding a flag: write help string + implementation + test in the same commit. *(from IRO #21)*
+
+3. **Pre-increment branch review is a mandatory gate.** Before starting the next phase/increment, review the current branch diff — implementation, tests, docs, governance. Produce written findings. Only start new work when findings are resolved or explicitly deferred. *(from IRO #25)*
+
+4. **Repo-local temp paths, never OS temp dirs.** Use `tests/.tmp/` under project root (gitignored). `tempfile.gettempdir()` is fragile in sandboxed/CI environments. *(from IRO #9)*
+
+5. **Integration tests must assert numerical outcomes, not just "exit 0 + heading present."** When a benchmark/test validates scoring, it must assert specific score ranges or values — "passes without error" is not a meaningful quality gate for scoring correctness. *(from ReleaseRadar)*
+
+6. **Coverage ≥90% is a per-module gate, not an aggregate.** A 95% project average can hide an 0%-covered new module. Measure and enforce per-module after each task. *(from IRO #20)*
+
+7. **Behaviour-change benchmarks must prove the recommendation shifts in both directions.** Include at least one benchmark that produces high confidence AND one that produces low confidence. All-passing scenarios don't prove the system can detect bad input. *(from IRO #24)*

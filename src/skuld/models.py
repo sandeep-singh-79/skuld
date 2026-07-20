@@ -70,6 +70,7 @@ class GenerationResponse:
     provider: str
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    finish_reason: str = "stop"  # "stop" = complete; anything else = truncated
 
 
 # ---------------------------------------------------------------------------

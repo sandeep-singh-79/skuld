@@ -282,3 +282,37 @@ class TestFakeLLMClientErrorSimulation:
         req = GenerationRequest(system_prompt="s", user_prompt="u")
         resp = client.generate(req)  # should not raise
         assert resp.content == "fake response"
+
+
+class TestTruncatedResponseHandling:
+    """BudgetedLLMClient raises TruncatedResponseError on non-stop finish_reason."""
+
+    def test_budgeted_client_raises_on_truncated_response(self):
+        """finish_reason='length' → TruncatedResponseError raised before returning."""
+        from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, TruncatedResponseError
+
+        fake = FakeLLMClient(response_content='{"test_cases": []}', finish_reason="length")
+        budgeted = BudgetedLLMClient(fake, max_tokens=32000)
+        req = GenerationRequest(system_prompt="s", user_prompt="u")
+        with pytest.raises(TruncatedResponseError, match="finish_reason='length'"):
+            budgeted.generate(req)
+
+    def test_budgeted_client_passes_stop_reason(self):
+        """finish_reason='stop' (default) → response returned normally."""
+        from skuld.llm_client import BudgetedLLMClient, FakeLLMClient
+
+        fake = FakeLLMClient(response_content="valid json", finish_reason="stop")
+        budgeted = BudgetedLLMClient(fake, max_tokens=32000)
+        req = GenerationRequest(system_prompt="s", user_prompt="u")
+        resp = budgeted.generate(req)
+        assert resp.content == "valid json"
+        assert resp.finish_reason == "stop"
+
+    def test_fake_client_returns_configured_finish_reason(self):
+        """FakeLLMClient propagates the configured finish_reason in the response."""
+        from skuld.llm_client import FakeLLMClient
+
+        client = FakeLLMClient(response_content="partial", finish_reason="content_filter")
+        req = GenerationRequest(system_prompt="s", user_prompt="u")
+        resp = client.generate(req)
+        assert resp.finish_reason == "content_filter"

@@ -1,0 +1,36 @@
+story:
+  id: "AUTH-101"
+  title: "User login with MFA"
+  description: "As a registered user, I want to log in using MFA so my account is secure."
+
+acceptance_criteria:
+  - id: "AC-1"
+    description: "User can log in with valid email and password"
+    criticality: high
+  - id: "AC-2"
+    description: "MFA code sent to registered phone after password validation"
+    criticality: high
+  - id: "AC-3"
+    description: "Login fails after 3 incorrect MFA attempts with account lock"
+    criticality: medium
+  - id: "AC-4"
+    description: "Meaningful error message for expired MFA code"
+    criticality: low
+
+comments:
+  - "Dev: what about session timeout during MFA flow?"
+  - "QA: handle SMS delivery failure gracefully"
+
+domain_context:
+  industry: "fintech"
+  application_type: "banking portal"
+  users: "retail banking customers"
+  compliance:
+    - "PCI-DSS"
+    - "SOX"
+
+config:
+  generator_model: "claude-sonnet-4"
+  reviewer_model: "gpt-4o"
+  filter_comments: true
+  output_format: "markdown"

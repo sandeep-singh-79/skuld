@@ -1,0 +1,27 @@
+must_include_headings:
+  - "## Test Cases"
+  - "## Requirements Traceability Matrix"
+  - "## Confidence Score"
+  - "## Coverage Gaps"
+
+must_include_labels:
+  - "AC Coverage:"
+  - "Negative Coverage:"
+  - "Edge-Case Coverage:"
+  - "Orphan Tests:"
+  - "Overall Confidence:"
+
+must_include_substrings:
+  - "functional"
+  - "negative"
+  - "edge-case"
+  - "AC-1"
+  - "AC-2"
+  - "AC-3"
+  - "AC-4"
+
+assertions:
+  - type: min_length
+    value: "1000"
+  - type: not_contains
+    value: "Traceback"

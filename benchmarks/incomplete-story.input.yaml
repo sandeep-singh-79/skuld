@@ -1,0 +1,14 @@
+story:
+  id: "MIN-001"
+  title: "Minimal story"
+  description: "As a user, I want to do something."
+
+acceptance_criteria:
+  - id: "AC-1"
+    description: "The thing works"
+    criticality: medium
+
+config:
+  generator_model: "claude-sonnet-4"
+  reviewer_model: "gpt-4o"
+  output_format: "markdown"

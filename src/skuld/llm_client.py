@@ -64,6 +64,10 @@ class BudgetedLLMClient:
                 f"Token budget exceeded: {self._used_tokens}/{self._max_tokens} used",
                 response=response,
             )
+        if response.finish_reason != "stop":
+            raise TruncatedResponseError(
+                f"LLM response truncated (finish_reason={response.finish_reason!r})"
+            )
         return response
 
 
@@ -113,4 +117,5 @@ class FakeLLMClient:
             provider=self._provider,
             prompt_tokens=self._prompt_tokens,
             completion_tokens=self._completion_tokens,
+            finish_reason=self._finish_reason,
         )

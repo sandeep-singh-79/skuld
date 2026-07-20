@@ -16,7 +16,7 @@ from skuld.adversarial_reviewer import (
 from skuld.comment_filter import filter_comments
 from skuld.confidence_scorer import compute_confidence_from_detailed
 from skuld.input_loader import InputValidationError, load_input, validate_raw
-from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, TokenBudgetExceeded
+from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, TokenBudgetExceeded, TruncatedResponseError
 from skuld.models import (
     EXIT_INPUT_ERROR,
     EXIT_OK,
@@ -156,11 +156,11 @@ def _resolve_llm_clients(config: dict) -> dict:
             "API key not configured. Set SKULD_ANTHROPIC_KEY or SKULD_OPENAI_KEY, or use --dry-run."
         )
 
-    # TODO: Wire real providers (AnthropicLLMClient, OpenAILLMClient) in T14.
-    # For now, use Fake with budget enforcement.
-    inner = FakeLLMClient(responses=["placeholder", "placeholder", "placeholder"])
-    budgeted = BudgetedLLMClient(inner, max_tokens=32000)
-    return {"generator": budgeted, "reviewer": budgeted, "refinement": budgeted}
+    # Real providers (AnthropicLLMClient, OpenAILLMClient) are wired in T14.
+    raise NotImplementedError(
+        "Real LLM providers are not yet implemented. "
+        "Use use_fake_llm=True or --dry-run until T14 wires AnthropicLLMClient / OpenAILLMClient."
+    )
 
 
 def _prepare_fake_clients(normalized: dict) -> dict:
@@ -185,7 +185,7 @@ def _run_from_package(
     normalized: dict,
     rtm_file: str | None,
     force: bool,
-    output_format: str,
+    output_format: str | None,
     use_fake_llm: bool,
 ) -> FlowResult:
     """Shared core pipeline logic."""
@@ -194,6 +194,16 @@ def _run_from_package(
     acs = normalized["acceptance_criteria"]
     config = normalized["config"]
     comments = normalized.get("comments")
+
+    # Resolve output format: explicit param wins; fall back to config; then default
+    if output_format is None:
+        output_format = config.get("output_format") or "markdown"
+    if output_format not in ("markdown", "json"):
+        return FlowResult(
+            exit_code=EXIT_INPUT_ERROR,
+            message=f"Unsupported output_format {output_format!r}. Must be 'markdown' or 'json'.",
+            output_path=None,
+        )
 
     logger.info("Pipeline started for story '%s' with %d ACs", story["id"], len(acs))
 
@@ -217,14 +227,14 @@ def _run_from_package(
     else:
         try:
             clients = _resolve_llm_clients(config)
-        except ValueError as exc:
+        except (ValueError, NotImplementedError) as exc:
             return FlowResult(exit_code=EXIT_INPUT_ERROR, message=str(exc), output_path=None)
 
     # 4. Generate (Pass 1)
     logger.info("Stage 1/3: Generating test cases...")
     try:
         test_cases = generate_tests(normalized, clients["generator"])
-    except (GenerationError, TokenBudgetExceeded) as exc:
+    except (GenerationError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
 
     # 5. Review
@@ -239,14 +249,14 @@ def _run_from_package(
             for ac in acs
         ]
         feedback = review_tests(test_cases, ac_objects, clients["reviewer"])
-    except (ReviewParseError, TokenBudgetExceeded) as exc:
+    except (ReviewParseError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
 
     # 6. Refine (Pass 2)
     logger.info("Stage 3/3: Refining test cases...")
     try:
         refined = refine_tests(test_cases, feedback, normalized, clients["refinement"])
-    except (GenerationError, TokenBudgetExceeded) as exc:
+    except (GenerationError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
 
     # 7. Map review flags
@@ -327,10 +337,14 @@ def run_pipeline(
     input_path: str,
     rtm_file: str | None = None,
     force: bool = False,
-    output_format: str = "markdown",
+    output_format: str | None = None,
     use_fake_llm: bool = False,
 ) -> FlowResult:
-    """File-based entry point."""
+    """File-based entry point.
+
+    output_format: "markdown" | "json" | None. When None, the value from
+    config.output_format in the input YAML is used (default: "markdown").
+    """
     try:
         package = load_input(input_path)
     except FileNotFoundError as exc:
@@ -351,10 +365,14 @@ def run_pipeline_from_dict(
     data: dict,
     rtm_file: str | None = None,
     force: bool = False,
-    output_format: str = "markdown",
+    output_format: str | None = None,
     use_fake_llm: bool = False,
 ) -> FlowResult:
-    """Dict-based entry point (for testing/programmatic use)."""
+    """Dict-based entry point (for testing/programmatic use).
+
+    output_format: "markdown" | "json" | None. When None, the value from
+    config.output_format in the input YAML is used (default: "markdown").
+    """
     try:
         normalized = validate_raw(data)
     except InputValidationError as exc:

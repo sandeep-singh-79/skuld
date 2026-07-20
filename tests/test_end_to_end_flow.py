@@ -317,16 +317,16 @@ class TestPipelineApiKeyErrors:
         assert result.exit_code == EXIT_INPUT_ERROR
         assert "API key not configured" in result.message
 
-    def test_api_key_present_does_not_error(self, monkeypatch):
-        """use_fake_llm=False with key set proceeds (uses fake under the hood for now)."""
+    def test_api_key_present_without_provider_returns_not_implemented(self, monkeypatch):
+        """use_fake_llm=False with API key set → EXIT_INPUT_ERROR with actionable message."""
         from skuld.end_to_end_flow import run_pipeline_from_dict
 
         monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test-dummy")
 
         data = _make_raw_yaml_input()
         result = run_pipeline_from_dict(data, use_fake_llm=False)
-        # Should not fail with API key error (may fail differently since real provider not wired)
-        assert result.exit_code != EXIT_INPUT_ERROR or "API key" not in result.message
+        assert result.exit_code == EXIT_INPUT_ERROR
+        assert "not yet implemented" in result.message
 
 
 # ---------------------------------------------------------------------------
@@ -363,3 +363,90 @@ class TestReviewParseFailure:
             )
         assert result.exit_code == EXIT_VALIDATION_ERROR
         assert "parse" in result.message.lower() or "review" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tests: TestTruncatedResponse (Fix 1)
+# ---------------------------------------------------------------------------
+
+class TestTruncatedResponse:
+    """Pipeline returns EXIT_VALIDATION_ERROR when LLM response is truncated."""
+
+    def test_truncated_generation_returns_validation_error(self):
+        """finish_reason='length' on generation → EXIT_VALIDATION_ERROR."""
+        from skuld.end_to_end_flow import _run_from_package
+        from skuld.llm_client import BudgetedLLMClient, FakeLLMClient
+        from unittest.mock import patch
+
+        normalized = _make_normalized_input()
+        truncated_client = FakeLLMClient(
+            response_content='{"test_cases": [',  # syntactically valid start, truncated
+            finish_reason="length",
+        )
+        budgeted = BudgetedLLMClient(truncated_client, max_tokens=32000)
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value={"generator": budgeted, "reviewer": budgeted, "refinement": budgeted},
+        ):
+            result = _run_from_package(
+                normalized, rtm_file=None, force=False, output_format=None, use_fake_llm=True
+            )
+        assert result.exit_code == EXIT_VALIDATION_ERROR
+        assert "truncated" in result.message.lower() or "finish_reason" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Tests: TestOutputFormatResolution (Fix 3)
+# ---------------------------------------------------------------------------
+
+class TestOutputFormatResolution:
+    """config.output_format in YAML is honoured when no explicit param is passed."""
+
+    def test_config_output_format_json_produces_json(self):
+        """When config.output_format='json' and no explicit param → output is JSON."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        data["config"] = {**data.get("config", {}), "output_format": "json"}
+        # No explicit output_format argument — must use config
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        parsed = json.loads(result.message)
+        assert "test_cases" in parsed
+        assert "confidence_score" in parsed
+
+    def test_explicit_output_format_overrides_config(self):
+        """Explicit output_format='markdown' wins even when config says 'json'."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        data["config"] = {**data.get("config", {}), "output_format": "json"}
+        result = run_pipeline_from_dict(data, output_format="markdown", use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        assert "## Test Cases" in result.message
+        # Must NOT be JSON
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(result.message)
+
+    def test_invalid_output_format_in_config_returns_input_error(self):
+        """config.output_format='xml' (invalid) → EXIT_INPUT_ERROR with clear message."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        data["config"] = {**data.get("config", {}), "output_format": "xml"}
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_INPUT_ERROR
+        assert "output_format" in result.message
+        assert "xml" in result.message
+
+    def test_null_output_format_in_config_uses_default_markdown(self):
+        """config.output_format=None (YAML null) → falls back to markdown."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        data["config"] = {**data.get("config", {}), "output_format": None}
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        assert "## Test Cases" in result.message
+

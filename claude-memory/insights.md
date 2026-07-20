@@ -108,3 +108,13 @@ Each step MUST be a separate subagent invocation — never combined into one cal
 6. **Coverage ≥90% is a per-module gate, not an aggregate.** A 95% project average can hide an 0%-covered new module. Measure and enforce per-module after each task. *(from IRO #20)*
 
 7. **Behaviour-change benchmarks must prove the recommendation shifts in both directions.** Include at least one benchmark that produces high confidence AND one that produces low confidence. All-passing scenarios don't prove the system can detect bad input. *(from IRO #24)*
+
+## Learnings from Pre-Increment Review (2026-07-20, GPT-5.4 adversarial)
+
+8. **Domain models must carry all metadata that downstream logic needs for correctness decisions.** When response metadata (like `finish_reason`) exists in the provider contract but is absent from the domain model, information is destroyed at the adapter boundary. A "lossy boundary" means downstream code cannot distinguish a complete response from a truncated one. Rule: if a correctness decision depends on a field, the domain model must propagate it.
+
+9. **Placeholder implementations that don't fail fast create confusing errors downstream.** A TODO comment is not a safety net. If a code path isn't implemented, it must raise `NotImplementedError` at the boundary — not proceed with fake data that causes a different, misleading failure three layers deeper. Rule: every non-implemented branch must be guarded by an explicit runtime error with an actionable message.
+
+10. **Config values that are loaded but never consumed are silent contract violations (dead config).** When the input schema documents a field and the loader preserves it, but the consuming function ignores it in favour of its own default, users will set the value and get no effect. Rule: trace data flow from input schema → loader → consumer during review. Every config field must either be consumed or explicitly documented as "not yet wired".
+
+11. **When correctness checks live in a wrapper, provider wiring must preserve that wrapper.** The 2026-07-20 truncation fix is enforced by `BudgetedLLMClient`, not by raw provider clients. That is safe only if every real-provider path is wrapped before the pipeline consumes it. Rule for T14+: either keep all providers behind `BudgetedLLMClient` or duplicate the `finish_reason == "stop"` enforcement at each provider boundary, then test generator/reviewer/refinement truncation on the real wiring path.

@@ -4,84 +4,77 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
-## Fix Plan — Pre-Increment Branch Review Findings (2026-07-20)
+## T14 CLI Adversarial Review Summary (2026-07-20)
 
-Source: GPT-5.4 adversarial review of `feature/phase-1-3-mvp` vs `main`.
+**Status:** All HIGH/MEDIUM findings resolved across 6 review rounds. Residual LOW items recorded. Ready for final whole-change-set review and commit.
 
-### Fix 1 (HIGH): Wire `finish_reason` through response contract and reject truncated completions
+**Review process:** GPT-5.4 found issues → Opus planned fixes → Sonnet implemented → Opus verified → repeat until no HIGH/MEDIUM findings remained.
 
-**Problem:** `GenerationResponse` has no `finish_reason` field. `TruncatedResponseError` is defined but never raised. Truncated LLM output (syntactically valid partial JSON) is silently scored as complete.
+### Review Round Summary
 
-**Steps:**
-1. **models.py** — Add `finish_reason: str = "stop"` field to `GenerationResponse`.
-2. **llm_client.py / FakeLLMClient** — Include `self._finish_reason` in the returned `GenerationResponse`.
-3. **llm_client.py / BudgetedLLMClient** — After delegating, check `response.finish_reason != "stop"` → raise `TruncatedResponseError(f"LLM response truncated (finish_reason={response.finish_reason!r})")`.
-4. **end_to_end_flow.py** — Add `TruncatedResponseError` to the `except` tuples for generate/review/refine calls (same treatment as `TokenBudgetExceeded`).
-5. **tests/test_llm_client.py** — Add 3 tests:
-   - `test_budgeted_client_raises_on_truncated_response`
-   - `test_budgeted_client_passes_stop_reason`
-   - `test_fake_client_returns_configured_finish_reason`
-6. **tests/test_end_to_end_flow.py** — Add 1 test:
-   - `test_truncated_generation_returns_validation_error`
+| Round | Findings | Key changes |
+|-------|----------|-------------|
+| R1 | F1–F5 (2H, 2M, 1L) | Spec-format benchmark assertions, `rtm update` shape validation, malformed-entry handling, file-size cap |
+| R2 | R2-1 to R2-3 (2H, 1M) | Spec-format keys validated as lists, `ac_ids` string→list coercion, benchmark value coercion to string |
+| R3 | R3-1 to R3-2 (1H, 1M) | `ac_ids` list element types validated, simple `assertions` field validated as list |
+| R4 | R4-1 to R4-3 (2H, 1M) | Blank AC IDs rejected, pre-evaluation assertion schema validation, malformed typed assertions exit 2 |
+| R5 | R5-1 to R5-3 (2H, 1M) | Negative `min_length` rejected, whitespace-padded AC IDs normalized, allowed types gated, non-string values rejected |
+| R6 | R6-1 to R6-3 (2H, 1M) | `story_id` batch consistency in `rtm update`, benchmark fail-fast ordering, explicit `type` required for simple assertions |
 
-**Validation:** `TruncatedResponseError` raised before parser sees content; existing 413 tests still pass.
+**Total: 18 findings fixed (11 HIGH, 7 MEDIUM). 1 LOW accepted (F5: symlink bypass).**
 
----
+### Final State
 
-### Fix 2 (MEDIUM): Fail fast on non-fake path until real providers are wired
+- **Tests:** 496 passing (75 CLI-specific)
+- **Coverage:** `cli.py` 91%, overall 96%
+- **Exit-code contract:** exit 2 = malformed input, exit 1 = valid benchmark failing against output, exit 0 = pass
 
-**Problem:** `_resolve_llm_clients()` returns a FakeLLMClient with `"placeholder"` content when API keys are present. This produces a confusing `Failed to parse JSON` error instead of a clear "not implemented" message.
+### Hardening Applied (by surface area)
 
-**Steps:**
-1. **end_to_end_flow.py / `_resolve_llm_clients()`** — Replace the fake-client creation block with:
-   ```python
-   raise NotImplementedError(
-       "Real LLM providers are not yet implemented. "
-       "Use use_fake_llm=True or --dry-run until T14 wires AnthropicLLMClient / OpenAILLMClient."
-   )
-   ```
-2. **end_to_end_flow.py / `_run_from_package()`** — Add `NotImplementedError` to the `except` clause around `_resolve_llm_clients()`, returning `EXIT_INPUT_ERROR` with the exception message.
-3. **tests/test_end_to_end_flow.py** — Update `test_api_key_present_does_not_error` → rename to `test_api_key_present_without_provider_returns_not_implemented` and assert the message contains "not yet implemented".
-
-**Validation:** With API key set and `use_fake_llm=False`, user gets actionable error. Existing fake-path tests unaffected.
+- **`_coerce_ac_ids()`:** type validation, element type validation, blank rejection, whitespace normalization
+- **`score`:** file-size cap, JSON dict validation, `_coerce_ac_ids()`
+- **`rtm update`:** file-size cap, JSON dict validation, `story_id` required/consistent/normalized, `_coerce_ac_ids()`
+- **`benchmark`:** assertions validated before `run_pipeline()`, explicit `type` required for simple format, allowed types gated, non-empty string values enforced, negative `min_length` rejected
 
 ---
 
-### Fix 3 (MEDIUM): Honour `config.output_format` from input YAML
+## T14 Deferred Items (2026-07-20)
 
-**Problem:** The public entry points default `output_format="markdown"` and pass it to `_run_from_package()`, which ignores `config["output_format"]`. So the YAML setting is dead.
+### Still open:
+- **D14-1:** Symlink bypass of `_validate_path` — low risk for local CLI.
+- **D14-4:** Exit code semantics: "no API key" exits 2 (input error), but it's really an environment error.
+- **D14-5:** `skuld rtm update --help` doesn't document expected JSON schema.
+- **D14-6:** `skuld score` gap messages could suggest remediation.
+- **D14-7:** Truncation guard only in `BudgetedLLMClient` wrapper. Real providers must also be wrapped (T15+).
+- **D14-8:** Add truncation integration tests for real-provider wiring path.
 
-**Steps:**
-1. **end_to_end_flow.py** — Change parameter signature on both public functions:
-   ```python
-   output_format: str | None = None,
-   ```
-2. **end_to_end_flow.py / `_run_from_package()`** — At the top, resolve format:
-   ```python
-   if output_format is None:
-       output_format = config.get("output_format", "markdown")
-   ```
-3. **tests/test_end_to_end_flow.py** — Add 2 tests:
-   - `test_config_output_format_json_produces_json` (no explicit param → uses config)
-   - `test_explicit_output_format_overrides_config` (explicit param wins over config)
+### Resolved by adversarial review rounds:
+- ~~D14-2: Benchmark with 0 assertions passes vacuously~~ → resolved by R1 (empty assertions rejected)
+- ~~D14-3: Empty `value` in `contains` always passes~~ → resolved by R4 (empty values rejected)
+- ~~T5b-3: Path traversal on --rtm-file~~ → resolved by T14 `_validate_path`
+- ~~T13-D3: RTM file path traversal~~ → resolved by T14 `_validate_path`
 
-**Validation:** YAML `output_format: json` now produces JSON; explicit param still takes priority.
+### Residual LOW items from post-Round-6 review (record-only):
+
+| # | Description | Suggested future test |
+|---|-------------|----------------------|
+| L1 | Later-item `story_id` missing/blank not explicitly tested | `test_rtm_update_later_item_missing_story_id_rejected` |
+| L2 | Fail-fast benchmark test only proves one malformed shape skips pipeline | `test_benchmark_schema_invalid_assertions_fail_before_pipeline` |
+| L3 | Mixed simple assertion list with one missing `type` not covered | `test_benchmark_mixed_assertion_list_with_one_missing_type_rejected` |
+
+**Deferred handling rule:** add these tests only when a future change touches `benchmark` or `rtm update`.
 
 ---
 
-### Execution Notes
-- All three fixes land in a single commit on `feature/phase-1-3-mvp`.
-- Run full test suite after all fixes; expect 413 + ~9 new tests = ~422 passing.
-- Verify per-module coverage stays ≥90%.
-- Deferred item T9-D1 (`finish_reason` field) is resolved by Fix 1 — remove from deferred table.
+## Pre-Increment Branch Review Fix Plan (2026-07-20, completed)
 
-### Residual Risk / Handoff Note (2026-07-20)
-- Current truncation enforcement is guaranteed only when callers go through `BudgetedLLMClient`.
-- The current E2E pipeline does wrap fake clients with `BudgetedLLMClient`, so there is no open branch bug after the 2026-07-20 fixes and re-review.
-- Risk for T14: when real providers (`AnthropicLLMClient`, `OpenAILLMClient`) are wired, they must either:
-   - always be wrapped by `BudgetedLLMClient`, or
-   - enforce `finish_reason == "stop"` at the provider boundary before returning `GenerationResponse`.
-- Validation gate for T14: add at least one test each for truncated generator, reviewer, and refinement responses using the real-provider wiring path, not only the fake-client path.
+These fixes from the GPT-5.4 pre-increment review of `feature/phase-1-3-mvp` vs `main` are **already implemented and merged**:
+
+1. ~~**Fix 1 (HIGH):** Wire `finish_reason` through `GenerationResponse` and reject truncated completions~~ ✅
+2. ~~**Fix 2 (MEDIUM):** Fail fast on non-fake path until real providers are wired~~ ✅
+3. ~~**Fix 3 (MEDIUM):** Honour `config.output_format` from input YAML~~ ✅
+
+**Residual risk:** truncation enforcement depends on `BudgetedLLMClient` wrapping. When T15+ wires real providers, they must either be wrapped or enforce `finish_reason == "stop"` at the provider boundary.
 
 ---
 

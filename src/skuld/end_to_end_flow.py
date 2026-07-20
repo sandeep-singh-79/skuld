@@ -158,8 +158,7 @@ def _resolve_llm_clients(config: dict) -> dict:
 
     # Real providers (AnthropicLLMClient, OpenAILLMClient) are wired in T14.
     raise NotImplementedError(
-        "Real LLM providers are not yet implemented. "
-        "Use use_fake_llm=True or --dry-run until T14 wires AnthropicLLMClient / OpenAILLMClient."
+        "Real LLM providers are not yet implemented. Use --dry-run for local testing."
     )
 
 

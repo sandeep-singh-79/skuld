@@ -450,3 +450,278 @@ class TestOutputFormatResolution:
         assert result.exit_code == EXIT_OK
         assert "## Test Cases" in result.message
 
+
+# ---------------------------------------------------------------------------
+# Tests: TestDegradedScenarios
+# ---------------------------------------------------------------------------
+
+class TestDegradedScenarios:
+    """Prove the scoring/gap path can go meaningfully red.
+
+    Each test patches _prepare_fake_clients with hand-crafted incomplete
+    responses to verify that degraded inputs produce degraded scores and
+    explicit gap reports — not just different shades of 'good'.
+    """
+
+    def _make_input(self) -> dict:
+        return {
+            "story": {"id": "S-1", "title": "T", "description": "D"},
+            "acceptance_criteria": [
+                {"id": f"AC-{i}", "description": f"AC {i}", "criticality": "medium"}
+                for i in range(1, 4)
+            ],
+            "config": {"generator_model": "a", "reviewer_model": "b"},
+        }
+
+    def _fake_review(self) -> str:
+        return json.dumps({
+            "flagged_tests": [],
+            "missing_scenarios": [],
+            "quality_scores": {"coverage": 0.9, "clarity": 0.85, "testability": 0.9},
+            "suggestions": [],
+        })
+
+    def _patch_fake_clients(self, gen_response: str, review_response: str):
+        """Return a patch context using sequential responses for the shared client."""
+        from skuld.llm_client import BudgetedLLMClient, FakeLLMClient
+
+        inner = FakeLLMClient(responses=[gen_response, review_response, gen_response])
+        budgeted = BudgetedLLMClient(inner, max_tokens=32000)
+        return {"generator": budgeted, "reviewer": budgeted, "refinement": budgeted}
+
+    def test_functional_only_degradation(self):
+        """All ACs get only functional tests → medium-tier confidence (50–65 range),
+        with explicit no-negative and no-edge-case gap messages for every AC."""
+        from unittest.mock import patch
+
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        gen_response = json.dumps({"test_cases": [
+            {"id": f"TC-00{i}", "story_id": "S-1", "ac_ids": [f"AC-{i}"],
+             "test_type": "functional", "priority": "P1", "preconditions": "Running",
+             "steps": ["Step 1"], "expected_result": f"OK for AC-{i}",
+             "test_data": None, "automatable": True}
+            for i in range(1, 4)
+        ]})
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value=self._patch_fake_clients(gen_response, self._fake_review()),
+        ):
+            result = run_pipeline_from_dict(self._make_input(), use_fake_llm=True)
+
+        assert result.exit_code == EXIT_OK
+        assert "Negative Coverage: 0%" in result.message
+        assert "Edge-Case Coverage: 0%" in result.message
+        for i in range(1, 4):
+            assert f"AC-{i}: no negative test" in result.message
+            assert f"AC-{i}: no edge-case test" in result.message
+        import re
+        match = re.search(r"Overall Confidence:\s*([\d.]+)", result.message)
+        assert match, "Overall Confidence not found in output"
+        score = float(match.group(1))
+        assert 55.0 <= score < 58.0, f"Expected functional-only score 55–58, got {score}"
+        assert "(medium)" in result.message
+
+    def test_mixed_degradation_medium_tier(self):
+        """AC-1 partial, AC-2 partial, AC-3 uncovered, orphan → medium-tier confidence (50–65 range)."""
+        from unittest.mock import patch
+
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        gen_response = json.dumps({"test_cases": [
+            {"id": "TC-001", "story_id": "S-1", "ac_ids": ["AC-1"],
+             "test_type": "functional", "priority": "P1", "preconditions": "Running",
+             "steps": ["Step 1"], "expected_result": "OK", "test_data": None, "automatable": True},
+            {"id": "TC-002", "story_id": "S-1", "ac_ids": ["AC-2"],
+             "test_type": "functional", "priority": "P1", "preconditions": "Running",
+             "steps": ["Step 1"], "expected_result": "OK", "test_data": None, "automatable": True},
+            {"id": "TC-003", "story_id": "S-1", "ac_ids": ["AC-2"],
+             "test_type": "negative", "priority": "P2", "preconditions": "Running",
+             "steps": ["Step 1"], "expected_result": "Error", "test_data": "bad", "automatable": True},
+            {"id": "TC-ORPHAN", "story_id": "S-1", "ac_ids": ["AC-99"],
+             "test_type": "functional", "priority": "P1", "preconditions": "Running",
+             "steps": ["Step 1"], "expected_result": "OK", "test_data": None, "automatable": True},
+        ]})
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value=self._patch_fake_clients(gen_response, self._fake_review()),
+        ):
+            result = run_pipeline_from_dict(self._make_input(), use_fake_llm=True)
+
+        assert result.exit_code == EXIT_OK
+        assert "AC-1: no negative test" in result.message
+        assert "AC-1: no edge-case test" in result.message
+        assert "AC-2: no edge-case test" in result.message
+        assert "AC-3: no test coverage" in result.message
+        assert "Orphan Tests: 1" in result.message
+        import re
+        match = re.search(r"Overall Confidence:\s*([\d.]+)", result.message)
+        assert match, "Overall Confidence not found in output"
+        score = float(match.group(1))
+        assert 56.0 <= score < 59.0, f"Expected mixed-medium score 56–59, got {score}"
+        assert "(medium)" in result.message
+
+    def test_orphan_only_penalises_score(self):
+        """Full coverage on all ACs + 2 orphan tests → score < perfect, no coverage gaps."""
+        from unittest.mock import patch
+
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        cases = []
+        for i in range(1, 4):
+            for tt, sfx in [("functional", ""), ("negative", "-N"), ("edge-case", "-E")]:
+                cases.append({
+                    "id": f"TC-{i}{sfx}", "story_id": "S-1", "ac_ids": [f"AC-{i}"],
+                    "test_type": tt, "priority": "P1", "preconditions": "Running",
+                    "steps": ["Step 1"], "expected_result": f"OK", "test_data": None, "automatable": True,
+                })
+        # Two orphan tests mapping to non-existent ACs
+        cases.append({"id": "TC-ORP-1", "story_id": "S-1", "ac_ids": ["AC-99"],
+                      "test_type": "functional", "priority": "P1", "preconditions": "Running",
+                      "steps": ["Step 1"], "expected_result": "OK", "test_data": None, "automatable": True})
+        cases.append({"id": "TC-ORP-2", "story_id": "S-1", "ac_ids": ["AC-100"],
+                      "test_type": "functional", "priority": "P1", "preconditions": "Running",
+                      "steps": ["Step 1"], "expected_result": "OK", "test_data": None, "automatable": True})
+        gen_response = json.dumps({"test_cases": cases})
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value=self._patch_fake_clients(gen_response, self._fake_review()),
+        ):
+            result = run_pipeline_from_dict(self._make_input(), use_fake_llm=True)
+
+        assert result.exit_code == EXIT_OK
+        assert "AC Coverage: 100%" in result.message
+        assert "Negative Coverage: 100%" in result.message
+        assert "Edge-Case Coverage: 100%" in result.message
+        assert "No coverage gaps identified." in result.message
+        assert "Orphan Tests: 2" in result.message
+        import re
+        match = re.search(r"Overall Confidence:\s*([\d.]+)", result.message)
+        assert match, "Overall Confidence not found in output"
+        score = float(match.group(1))
+        assert 97.0 <= score < 99.0, f"Expected orphan-penalized score 97–99, got {score}"
+        assert "(high)" in result.message
+
+    def test_severe_degradation_low_tier(self):
+        """4 ACs, only AC-1 has 1 functional test, 3 fully uncovered + 2 orphans → low tier
+        from severe under-coverage. Orphan penalty contributes but coverage gaps dominate."""
+        from unittest.mock import patch
+
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        input_data = {
+            "story": {"id": "S-1", "title": "T", "description": "D"},
+            "acceptance_criteria": [
+                {"id": f"AC-{i}", "description": f"AC {i}", "criticality": "medium"}
+                for i in range(1, 5)
+            ],
+            "config": {"generator_model": "a", "reviewer_model": "b"},
+        }
+
+        def _tc(id_, ac, tt):
+            return {"id": id_, "story_id": "S-1", "ac_ids": [ac], "test_type": tt,
+                    "priority": "P1", "preconditions": "Running", "steps": ["Step 1"],
+                    "expected_result": "OK", "test_data": None, "automatable": True}
+
+        gen_response = json.dumps({"test_cases": [
+            _tc("TC-001", "AC-1", "functional"),
+            _tc("TC-ORP-1", "AC-99", "functional"),
+            _tc("TC-ORP-2", "AC-100", "functional"),
+        ]})
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value=self._patch_fake_clients(gen_response, self._fake_review()),
+        ):
+            result = run_pipeline_from_dict(input_data, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_OK
+        assert "AC-1: no negative test" in result.message
+        assert "AC-1: no edge-case test" in result.message
+        assert "AC-2: no test coverage" in result.message
+        assert "AC-3: no test coverage" in result.message
+        assert "AC-4: no test coverage" in result.message
+        assert "Orphan Tests: 2" in result.message
+        import re
+        match = re.search(r"Overall Confidence:\s*([\d.]+)", result.message)
+        assert match, "Overall Confidence not found in output"
+        score = float(match.group(1))
+        assert score < 50.0, f"Expected low-tier score < 50, got {score}"
+        assert "(low)" in result.message
+
+    def test_stage_wiring_uses_refinement_output(self):
+        """Pipeline uses the correct client for each stage: generator, reviewer, refinement."""
+        from unittest.mock import patch
+
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+        from skuld.llm_client import BudgetedLLMClient, FakeLLMClient
+
+        def _tc(id_, ac, tt):
+            return {"id": id_, "story_id": "S-1", "ac_ids": [ac], "test_type": tt,
+                    "priority": "P1", "preconditions": "Running", "steps": ["Step 1"],
+                    "expected_result": "OK", "test_data": None, "automatable": True}
+
+        gen_cases = json.dumps({"test_cases": [
+            _tc("TC-GEN-001", "AC-1", "functional"),
+            _tc("TC-GEN-002", "AC-1", "negative"),
+            _tc("TC-GEN-003", "AC-1", "edge-case"),
+        ]})
+        refined_cases = json.dumps({"test_cases": [
+            _tc("TC-REFINED-001", "AC-1", "functional"),
+            _tc("TC-REFINED-002", "AC-1", "negative"),
+            _tc("TC-REFINED-003", "AC-1", "edge-case"),
+        ]})
+
+        gen_inner = FakeLLMClient(response_content=gen_cases)
+        rev_inner = FakeLLMClient(response_content=self._fake_review())
+        ref_inner = FakeLLMClient(response_content=refined_cases)
+
+        gen_client = BudgetedLLMClient(gen_inner, max_tokens=32000)
+        rev_client = BudgetedLLMClient(rev_inner, max_tokens=32000)
+        ref_client = BudgetedLLMClient(ref_inner, max_tokens=32000)
+
+        single_ac_input = {
+            "story": {"id": "S-1", "title": "T", "description": "D"},
+            "acceptance_criteria": [{"id": "AC-1", "description": "AC 1", "criticality": "medium"}],
+            "config": {"generator_model": "a", "reviewer_model": "b"},
+        }
+
+        with patch(
+            "skuld.end_to_end_flow._prepare_fake_clients",
+            return_value={"generator": gen_client, "reviewer": rev_client, "refinement": ref_client},
+        ):
+            result = run_pipeline_from_dict(single_ac_input, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_OK
+        # Final report uses refinement output, not generator
+        assert "TC-REFINED-001" in result.message, "Final report must contain refinement output"
+        assert "TC-GEN-001" not in result.message, "Final report must NOT contain raw generator output"
+        # Slot integrity: each inner client was called exactly once
+        assert gen_inner.call_count == 1, f"Generator should be called once, got {gen_inner.call_count}"
+        assert rev_inner.call_count == 1, f"Reviewer should be called once, got {rev_inner.call_count}"
+        assert ref_inner.call_count == 1, f"Refinement should be called once, got {ref_inner.call_count}"
+        # Request integrity: each stage receives the correct prompt type/content
+        assert gen_inner.last_request is not None
+        assert "expert test case writer specializing in comprehensive test" in gen_inner.last_request.system_prompt
+        assert "<story_context>" in gen_inner.last_request.user_prompt
+        assert "<acceptance_criteria>" in gen_inner.last_request.user_prompt
+        assert "## Output Format" in gen_inner.last_request.user_prompt
+
+        assert rev_inner.last_request is not None
+        assert "adversarial test reviewer" in rev_inner.last_request.system_prompt
+        assert "## Generated Test Cases" in rev_inner.last_request.user_prompt
+        assert "TC-GEN-001" in rev_inner.last_request.user_prompt
+        assert "## Review Instructions" in rev_inner.last_request.user_prompt
+
+        assert ref_inner.last_request is not None
+        assert "You are an expert test case writer. You will refine a set of test cases" in ref_inner.last_request.system_prompt
+        assert "## Original Test Cases" in ref_inner.last_request.user_prompt
+        assert "TC-GEN-001" in ref_inner.last_request.user_prompt
+        assert "## Review Feedback" in ref_inner.last_request.user_prompt
+        assert "flagged_tests" in ref_inner.last_request.user_prompt
+        assert "quality_scores" in ref_inner.last_request.user_prompt
+        assert "## Refinement Instructions" in ref_inner.last_request.user_prompt
+

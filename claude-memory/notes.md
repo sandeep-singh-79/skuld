@@ -4,9 +4,16 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
-## T17: Usage Documentation & Learning Guide (planned)
+## T17: Usage Documentation & Learning Guide (2026-07-21)
 
-**Rationale:** The tool has no user-facing documentation beyond a minimal README. A QE lead picking up Skuld needs a clear guide to understand input format, commands, output interpretation, and integration into their workflow.
+**Status:** Complete. README rewritten, 4 new docs created, adversarial findings fixed.
+
+### Deferred MEDIUM items (accepted):
+- **D17-1:** No API key setup instructions. `--dry-run` path is fully documented; real-provider onboarding deferred until providers are wired.
+- **D17-2:** Scoring model explained in 4 places (README, V1-OUTPUT, LEARNING-GUIDE, USAGE-GUIDE). Acceptable duplication — each serves a different reading depth.
+- **D17-3:** USAGE-GUIDE duplicates README installation section. Acceptable; keeps the guide self-contained.
+- **D17-4:** `rtm update --force` not mentioned in USAGE-GUIDE prose (only in CLI ref table). Acceptable gap.
+- **D17-5:** V1-OUTPUT-TEMPLATE sample uses `...` for truncated rows. Acceptable for a reference doc.
 
 **Template source:** Follow the established structure from IRO/SuiteCompass and QEStrategyForge docs.
 

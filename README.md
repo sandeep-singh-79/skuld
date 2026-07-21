@@ -23,13 +23,41 @@ Test results → [SuiteCompass] → Optimised Suite
 Release context → [ReleaseRadar] → Risk Score
 ```
 
+## Installation
+
+```bash
+git clone git@github.com:sandeep-singh-79/Skuld.git
+cd Skuld
+pip install -e ".[dev]"
+```
+
+Verify:
+
+```bash
+skuld --help
+```
+
 ## Quick Start
 
 ```bash
-pip install -e ".[dev]"
-skuld generate story_input.yaml
-skuld benchmark benchmarks/
+# Generate test cases from a story YAML (dry-run — no API keys needed)
+skuld generate benchmarks/login-mfa.input.yaml --dry-run
+
+# Score an existing test case set
+skuld score test_cases.json --format markdown
+
+# View RTM coverage summary
+skuld rtm report --rtm-file rtm.yaml
+
+# Run a benchmark scenario
+skuld benchmark benchmarks/login-mfa.input.yaml benchmarks/login-mfa.assertions.yaml --dry-run
 ```
+
+For full command reference, worked examples, and input/output formats see:
+- [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md)
+- [docs/V1-INPUT-TEMPLATE.md](docs/V1-INPUT-TEMPLATE.md)
+- [docs/V1-OUTPUT-TEMPLATE.md](docs/V1-OUTPUT-TEMPLATE.md)
+- [docs/LEARNING-GUIDE.md](docs/LEARNING-GUIDE.md)
 
 ## Scoring Model
 
@@ -37,8 +65,15 @@ skuld benchmark benchmarks/
 Confidence = (70% × RTM Score) + (30% × Adversarial Review Score)
 ```
 
-- **RTM Score** (deterministic): AC coverage, negative coverage, edge-case coverage, orphan tests, type distribution
-- **Adversarial Score** (qualitative): assertion strength, scenario realism, edge-case quality
+| RTM Component | What it measures |
+|---|---|
+| AC coverage (0.30) | Every AC has ≥1 functional test |
+| Negative coverage (0.25) | Every AC has ≥1 negative test |
+| Edge-case coverage (0.20) | Every AC has ≥1 edge-case test |
+| Type distribution (0.15) | Functional/negative/edge-case ratio |
+| Orphan penalty (0.10) | Tests not mapped to any AC (proportional) |
+
+**Confidence tiers:** ≥80 = high · ≥50 = medium · <50 = low
 
 ## License
 

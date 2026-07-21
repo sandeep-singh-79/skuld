@@ -678,7 +678,79 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 3 COMPLETE — Phase 4 (T13: End-to-End Flow) next |
-| Next Action | T13 — End-to-end flow (wire full pipeline) |
-| Tests | 394 passing |
+| Phase | Phase 4 COMPLETE — V2 planning next |
+| Last Commit | T17: Usage documentation (PR #2 open against main) |
+| Tests | 516 passing |
+| Coverage | 96% overall, all modules ≥90% |
 | Blockers | None |
+
+---
+
+## V2 Future Implementation Plan
+
+**Goal:** Turn Skuld from a deterministic demo tool into a production-ready AI test case generator with real LLM providers, enforced quality contracts, and sprint-level workflow integration.
+
+### Track 1: Real LLM Providers (highest priority)
+
+Wire actual LLM providers so users can generate meaningful test cases without `--dry-run`.
+
+| Task | Description |
+|------|-------------|
+| V2-1 | `src/skuld/providers/anthropic_client.py` — AnthropicLLMClient with API key from env |
+| V2-2 | `src/skuld/providers/openai_client.py` — OpenAILLMClient with API key from env |
+| V2-3 | Provider resolution in `_resolve_llm_clients()` — use config to pick provider |
+| V2-4 | All providers wrapped by `BudgetedLLMClient` (truncation + budget enforcement) |
+| V2-5 | Integration tests for truncated generator/reviewer/refinement on real wiring path |
+| V2-6 | API key setup documentation in USAGE-GUIDE.md |
+
+### Track 2: Deferred Hardening
+
+Items explicitly deferred during Phase 4 adversarial review rounds.
+
+| Task | Source | Description |
+|------|--------|-------------|
+| V2-7 | D15-3 | `strategy_ref` / HITL approval enforcement + benchmark coverage |
+| V2-8 | D15-2 | Scenario-sensitive fake fixtures for richer benchmark contracts |
+| V2-9 | D14-4 | Exit code 3 for environment errors (no API key) vs input errors |
+| V2-10 | T6-4 | Orphan penalty weight calibration with real-world data |
+| V2-11 | T5b-4 | Frozen copies for `entries` property (immutability for external consumers) |
+| V2-12 | P1-11 | Prompt injection tests for malicious story/AC content |
+
+### Track 3: Pipeline Evolution
+
+Design features deferred from MVP scope.
+
+| Task | Description |
+|------|-------------|
+| V2-13 | Configurable iteration depth (threshold-based termination loop) |
+| V2-14 | NFR coverage types (performance, security) beyond functional/negative/edge |
+| V2-15 | Red-path / degraded benchmark scenario with scenario-specific fake fixtures |
+| V2-16 | RTM `compact()` method to prune superseded/deprecated entries |
+| V2-17 | Cross-story AC registry warnings (semantic overlap detection) |
+
+### V2 Sequencing (prioritized)
+
+**Priority 1 — Real LLM Providers + Prompt Safety**
+1. V2-1: AnthropicLLMClient
+2. V2-2: OpenAILLMClient
+3. V2-3: Provider resolution in `_resolve_llm_clients()`
+4. V2-4: All providers wrapped by `BudgetedLLMClient`
+5. V2-5: Truncation integration tests on real wiring path
+6. V2-12: Prompt injection tests (moved up — live risk once real providers are wired)
+7. V2-6: API key setup documentation
+
+**Priority 2 — Pipeline Evolution**
+1. V2-13: Configurable iteration depth
+2. V2-14: NFR coverage types (performance, security)
+3. V2-15: Scenario-sensitive benchmark fixtures
+4. V2-16: RTM `compact()` for pruning dead entries
+5. V2-17: Cross-story AC registry warnings
+
+**Priority 3 — Deferred Hardening**
+1. V2-7: `strategy_ref` / HITL enforcement
+2. V2-8: Scenario-sensitive fake fixtures for benchmarks
+3. V2-9: Exit code 3 for environment errors
+4. V2-10: Orphan penalty weight calibration
+5. V2-11: Frozen copies for `entries` property
+
+**Rule:** Do not start V2 until PR #2 is merged to main. V2 branches from the merged Phase 4 baseline.

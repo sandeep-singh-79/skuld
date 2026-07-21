@@ -59,6 +59,15 @@ For full command reference, worked examples, and input/output formats see:
 - [docs/V1-OUTPUT-TEMPLATE.md](docs/V1-OUTPUT-TEMPLATE.md)
 - [docs/LEARNING-GUIDE.md](docs/LEARNING-GUIDE.md)
 
+## Release Status
+
+- Current release line: 0.1.x
+- Current version: 0.1.0
+- Runtime behavior currently uses FakeLLM for dry-run style pipeline execution.
+- Real provider integrations are planned for a 0.2.x milestone.
+
+Release notes and version history: [CHANGELOG.md](CHANGELOG.md)
+
 ## Scoring Model
 
 ```

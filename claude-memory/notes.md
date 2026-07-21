@@ -4,30 +4,75 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
-## T15 Deferred Items (2026-07-20)
+## T17: Usage Documentation & Learning Guide (planned)
 
-### From adversarial review:
-- ~~**D15-1 (HIGH):**~~ `domain_context` dict serialization — **RESOLVED.** `prompt_builder` now serializes dict→YAML string before fencing. Benchmark inputs restored to spec-compliant shape with `domain_context` blocks.
-- **D15-2 (MEDIUM, accepted):** T15 benchmarks validate deterministic pipeline wiring only, not scenario-sensitive generation. Documented in `benchmarks/README.md`. Scenario-sensitive benchmarks deferred to V2.
-- **D15-3 (MEDIUM, deferred):** `strategy_ref` / HITL contract unbenchmarked. Belongs in a future T-slice when HITL gates are wired.
-- **D15-4 (MEDIUM, accepted):** T15 is green-path only. Red-path/degraded benchmark deferred to T16+.
-- **D15-5 (LOW):** Structural assertion duplication across 3 files. Revisit at 6+.
-- **D15-6 (LOW, resolved):** README updated — directory-mode and `benchmark_runner.py` references removed.
+**Rationale:** The tool has no user-facing documentation beyond a minimal README. A QE lead picking up Skuld needs a clear guide to understand input format, commands, output interpretation, and integration into their workflow.
 
-### Fix Plan (Opus, 2026-07-20)
+**Template source:** Follow the established structure from IRO/SuiteCompass and QEStrategyForge docs.
 
-| # | Action | Scope |
-|---|--------|-------|
-| D15-1 | Serialize dict `domain_context` → YAML string in `prompt_builder.build_generator_prompt()` before calling `_fence()`. Restore spec-mandated `domain_context` blocks in both `login-mfa` and `ecommerce-checkout` benchmark inputs. Add 2 unit tests (dict + string). | `src/skuld/prompt_builder.py`, `benchmarks/*.input.yaml`, `tests/test_prompt_builder.py` |
-| D15-2 | Document T15 as deterministic plumbing benchmarks in `benchmarks/README.md`. Scenario-sensitive benchmarks deferred to V2. | `benchmarks/README.md` |
-| D15-3 | No code change. `strategy_ref` enforcement belongs in a future T-slice when HITL gates are wired. Record as deferred. | notes only |
-| D15-4 | No code change. Accept T15 as green-path only. Red-path/degraded benchmark belongs in T16+. | notes only |
-| D15-5 | No action at 3 files. Revisit at 6+. | — |
-| D15-6 | Update `benchmarks/README.md`: remove directory-mode and `benchmark_runner.py` references, show correct CLI pattern. | `benchmarks/README.md` |
+### Deliverables
 
-**Acceptance criteria:** pipeline no longer crashes on dict `domain_context`; both richer benchmark inputs pass with `--dry-run`; README matches reality; full suite green.
+| Artifact | Template from | Content |
+|----------|---------------|---------|
+| `README.md` (rewrite) | All 3 tools | Installation, quick start (correct CLI examples), feature overview, pipeline position, scoring model summary |
+| `docs/USAGE-GUIDE.md` | `IRO/docs/USAGE-GUIDE.md` | Prerequisites, installation, workflow steps (generate → score → rtm → benchmark), CLI command reference with options/flags, exit codes, worked examples |
+| `docs/V1-INPUT-TEMPLATE.md` | `IRO/docs/V1-INPUT-TEMPLATE.md` | Full YAML schema: `story`, `acceptance_criteria`, `comments`, `domain_context` (dict shape), `strategy_ref`, `config` — field tables with type/required/default/valid-values |
+| `docs/V1-OUTPUT-TEMPLATE.md` | `IRO/docs/V1-OUTPUT-TEMPLATE.md` | Required sections (Story Context, Test Cases, RTM, Confidence Score, Coverage Gaps), required labels, annotated sample output from `--dry-run` |
+| `docs/LEARNING-GUIDE.md` | `IRO/docs/LEARNING-GUIDE.md` | Domain teaching: why test case generation matters, how Skuld thinks (pipeline diagram), interpreting RTM coverage, confidence score breakdown, sprint workflow integration |
 
-**Status: IMPLEMENTED (2026-07-20) — 503 tests passing.**
+### Structure notes (from sibling tools)
+
+- **USAGE-GUIDE**: Workflow 0 (quick start from template), Workflow 1 (YAML-first), Workflow 2 (benchmark), CLI reference table
+- **V1-INPUT-TEMPLATE**: Top-level structure diagram, per-section field tables with types/defaults/validation rules
+- **V1-OUTPUT-TEMPLATE**: Output principles (structured, deterministic, machine-checkable), section table, label table, annotated sample
+- **LEARNING-GUIDE**: Opens with "How X Thinks" (pipeline diagram), then domain concepts, then interpretation guidance, then common pitfalls
+
+### Scope rules
+- Documents the implemented CLI only, not future/planned features
+- Uses `--dry-run` path for all examples (no API keys needed)
+- References benchmark scenarios as working examples
+- Ships in the same commit as the stale README fix
+
+### Dependencies
+- T14 (CLI) ✅
+- T15 (benchmarks) ✅
+- No code changes expected — documentation only
+
+---
+
+## T15 Benchmarks (2026-07-20)
+
+**Status:** Complete. 3 benchmark scenarios + domain_context fix. 503→516 tests.
+
+### What was done:
+- 3 benchmark input/assertion file pairs (login-mfa, ecommerce-checkout, incomplete-story)
+- Fixed `prompt_builder._fence()` crash on dict `domain_context` (serializes to YAML string)
+- Restored spec-compliant `domain_context` blocks in benchmark inputs
+- `benchmarks/README.md` rewritten with correct CLI pattern and design limitations
+
+### Still deferred:
+- **D15-2:** Scenario-sensitive benchmarks (V2 — needs real provider responses or scenario fixtures)
+- **D15-3:** `strategy_ref` / HITL contract (future T-slice when HITL gates are wired)
+- **D15-5:** Structural assertion duplication across 3 files (revisit at 6+ scenarios)
+
+---
+
+## T16 Coverage Hardening (2026-07-20)
+
+**Status:** Complete. 516 tests, 96% coverage, `--cov-fail-under=90` gate passes.
+
+### What was done:
+- `tests/test_guardrails.py`: 8 architecture/safety guardrail tests (deterministic boundary, token budget, AC limit, loader size, CLI size)
+- Unified `generate` file-size contract: removed redundant 10MB CLI guard, loader's 1MB is the single authority
+- 5 degraded-scenario integration tests proving the scoring/gap path can go red:
+  - functional-only → medium tier (score 55–58)
+  - mixed degradation → medium tier (score 56–59)
+  - orphan-only → high tier with penalty (score 97–99)
+  - severe degradation → low tier (score < 50)
+  - stage wiring integrity (3 distinct clients, call_count + prompt-content assertions)
+
+### Residual LOW (record-only):
+- Wiring test prompt-content assertions depend on exact prompt wording; a harmless prompt rewrite could require test updates
 
 ---
 

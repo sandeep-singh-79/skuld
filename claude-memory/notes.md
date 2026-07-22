@@ -4,6 +4,188 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
+## Review Findings After V2-1..V2-4 (2026-07-22)
+
+### Current findings
+
+- Docs/contract review completed against code and tests.
+  - HIGH: release/version contract drift — README and CHANGELOG present 0.2.0 as current while package metadata and CLI version remain 0.1.0.
+  - HIGH: default model contract drift — loader defaults still normalize to `claude-sonnet-4` / `gpt-5.5`, while newer docs and provider wiring point toward `claude-sonnet-4-20250514` / `gpt-4o`.
+  - LOW: changelog coverage claim should be ~96% (95.83 current run), not ~97%.
+  - LOW: usage docs should mention explicit `provider` for deployment-specific model aliases and consider a short note clarifying why V1 template docs contain V2 provider-routing fields.
+
+- RESOLVED (2026-07-22): Anthropic cache-eligible prompt content now lives in `system_prompt`.
+  - Stable requirements/schema blocks were moved out of `user_prompt` for generator, reviewer, and refinement prompts.
+  - `_compose_system_prompt()` now acts as an explicit cache-safety guardrail: only stable, non-user-specific content belongs in cache-marked system prompts.
+
+- RESOLVED (2026-07-22): Input-loader hardening now trusts explicit providers for deployment-specific aliases while still rejecting obvious known-prefix mismatches.
+  - `model_routing` phases now infer providers only when `provider` is absent.
+  - Explicit providers remain validated against known `claude-*` / `gpt-*` / `o1-*` / `o3-*` / `o4-*` prefixes, but unknown alias names are accepted when the provider is explicit.
+
+- RESOLVED (2026-07-22): Numeric coercion at the loader boundary now rejects booleans and non-integral numerics for integer fields.
+  - `True`/`False` no longer coerce into `temperature` or token limits.
+  - Float values and float-like strings are rejected for integer token fields.
+
+- RESOLVED (2026-07-22): Prompt-cache safety is now protected by regression tests.
+  - Tests assert that story-specific content, comments, domain context, generated test payloads, and review feedback payloads stay out of cache-eligible `system_prompt` blocks.
+
+- RESOLVED (2026-07-22): Provider config validation now happens at the input-loader boundary.
+  - Top-level `temperature`, `max_tokens`, `max_tokens_per_run`, and `output_format` are validated/coerced before provider resolution.
+  - `model_routing` now validates required phases, provider/model compatibility, and per-phase numeric fields; missing providers are inferred and written back.
+
+- RESOLVED (2026-07-22): The prompt-caching footgun now has a concrete code-level safeguard.
+  - The cache-safe composition helper documents the rule that user-specific content must not be moved into cacheable system prompt blocks.
+
+### Review misses / pending reviews
+
+- Real-provider smoke review is still pending.
+  - Trigger: once valid `SKULD_ANTHROPIC_KEY` and `SKULD_OPENAI_KEY` are available.
+  - Scope: one tiny real Anthropic call and one tiny real OpenAI call to confirm payload shape, finish_reason handling, and usage fields.
+
+- Cost/latency/cache-behavior review is still pending.
+  - Trigger: once real provider keys are available.
+  - Scope: verify Anthropic cache counters move as expected and shared budgeting behaves correctly with cached reads.
+
+- Parser/output-contract review with real provider output is still pending.
+  - Trigger: once real provider keys are available.
+  - Scope: confirm real model responses still satisfy JSON parsing and truncation assumptions across generate/review/refine paths.
+
+### Ready-for-docs-and-commit checklist
+
+- [x] V2-1 Anthropic provider implemented
+- [x] V2-2 OpenAI provider implemented
+- [x] V2-3 Provider resolution wired
+- [x] V2-4 Shared per-run budget wired
+- [x] Functional review completed
+- [x] User-perspective review completed
+- [x] Security review completed
+- [x] Base-class refactor completed
+- [x] Anthropic cache token accounting fixed
+- [x] Prompt-builder cache split completed
+- [x] Loader-boundary provider config validation completed
+- [x] Cache-safety regression guards completed
+- [x] Docs created/updated
+- [x] Docs/contract review completed
+- [ ] Real-provider smoke review completed with valid API keys
+- [ ] Cost/latency/cache-behavior review completed with valid API keys
+- [ ] Parser/output-contract review completed with real provider output
+- [ ] Final adversarial-reviewer pass completed
+- [ ] Commit
+
+---
+
+## V2 Prompt/Config Hardening (2026-07-22)
+
+**Status:** Complete. 624 tests passing.
+
+### What was fixed
+- Stable requirements/schema content now lives in cache-eligible `system_prompt` blocks for generator, reviewer, and refinement prompts.
+- Per-request minima (`min_negative_per_ac`, `min_edge_case_per_ac`) remain in `user_prompt` to avoid Anthropic cache fragmentation.
+- Provider config is now validated and normalized at the input-loader boundary.
+- Explicit providers now support deployment-specific alias model names while still rejecting obvious known-prefix mismatches.
+- Numeric provider config rejects `bool` values and non-integer token limits for integer fields.
+
+### Regression guards added
+- Story, comments, and domain context stay out of generator `system_prompt`.
+- Generated tests stay out of reviewer `system_prompt`.
+- Original tests and review feedback stay out of refinement `system_prompt`.
+- Custom per-run minima stay out of cache-eligible generator `system_prompt`.
+
+### Deferred items
+- **D-V2-PROMPT-1 (MEDIUM):** Real-world Anthropic cache effectiveness still needs validation with actual provider keys and usage counters.
+
+---
+
+## V2 Refactor: BaseLLMProvider + Prompt Caching (2026-07-22)
+
+**Status:** Complete. 601 tests, 97% coverage. On branch `feature/v2-providers`.
+
+### What was done:
+- `src/skuld/providers/base.py` — Template Method base class (129 lines)
+- Refactored both providers to ~70-80 lines each (down from ~115)
+- Anthropic prompt caching: `cache_control: {"type": "ephemeral"}` on system prompt
+- Token accounting: sums `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`
+- `_DISPLAY_NAME` attribute for correct user-facing names ("OpenAI" not "Openai")
+
+### Adding a new provider now requires:
+- ~15 lines: class attrs + 4 method implementations
+- No boilerplate for key resolution, SDK import, error wrapping, response building
+
+### GPT-5.4 review findings:
+- F1 (HIGH): Cache tokens undercounted → fixed, sum all input-side counters
+- F2 (MEDIUM): Caching may be no-op for short system prompts → accepted, preparatory
+- F3 (MEDIUM): Config validation at loader boundary → fixed in V2 Prompt/Config Hardening slice
+- F4 (LOW): title() → _DISPLAY_NAME → fixed
+
+---
+
+## V2-2/V2-3/V2-4: OpenAI + Provider Resolution + Shared Budget (2026-07-22)
+
+**Status:** Complete. 597 total tests, 96% coverage. On branch `feature/v2-providers`.
+
+### V2-2: OpenAILLMClient
+- `src/skuld/providers/openai_client.py` — mirrors anthropic pattern exactly
+- 31 tests, covers protocol, init, generate, error handling, budgeted wrapping
+- Default model: `gpt-4o`, env var: `SKULD_OPENAI_KEY`
+
+### V2-3: Provider Resolution
+- Replaced `_resolve_llm_clients()` stub with real wiring
+- Two modes: simple (`generator_model`/`reviewer_model`) and advanced (`model_routing`)
+- Provider inference: `claude-*` → anthropic, `gpt-*/o1-*/o3-*/o4-*` → openai
+- `_infer_provider()` and `_create_provider_client()` helper functions
+
+### V2-4: SharedBudget
+- Added `SharedBudget` class to `llm_client.py`
+- All three phases share a single token counter per run
+- `BudgetedLLMClient` accepts optional `shared_budget` parameter
+
+### GPT-5.4 review findings (all resolved):
+- F1 (HIGH): model_routing schema not validated → added dict/model checks with ValueError
+- F2 (HIGH): Three independent budgets → SharedBudget shared across all phases
+- F3 (MEDIUM): Advanced mode ignored max_tokens_per_run → fixed in both paths
+- F4 (MEDIUM): No same-model warning for model_routing → added check
+- F5 (MEDIUM): No type/range validation on config values → deferred to V2-7+ (input_loader hardening)
+
+### Awaiting:
+- User's adversarial-reviewer agent pass
+
+---
+
+## V2-1: AnthropicLLMClient (2026-07-21)
+
+**Status:** Complete. 30 tests, 100% coverage. On branch `feature/v2-providers`.
+
+### What was done:
+- `src/skuld/providers/__init__.py` — package init
+- `src/skuld/providers/anthropic_client.py` — `AnthropicLLMClient` implementation (104 lines)
+- `tests/test_anthropic_client.py` — 30 tests (protocol, init, generate, error handling, budgeted wrapping)
+- `pyproject.toml` — optional dependency groups: `anthropic`, `openai`, `providers`
+
+### Design decisions:
+- API key resolution: explicit `api_key` param → `SKULD_ANTHROPIC_KEY` env var → `ValueError`
+- No CLI `--api-key` flag (security: visible in shell history, process listings)
+- Constructor `api_key` param kept for programmatic callers (vault integration, test harness)
+- `anthropic` SDK imported lazily inside `__init__` (module importable without SDK installed)
+- Content block filtering: only `text`-bearing blocks extracted; non-text blocks skipped
+- `stop_reason` mapping: `end_turn`→`stop`, `max_tokens`→`length`, `None`→`stop`, others pass-through
+- Specific exception catches: `AuthenticationError`, `RateLimitError`, `APITimeoutError`, `APIConnectionError` — all with actionable user-facing messages
+- Generic `Exception` fallback wraps remaining errors with `from exc` for traceback chain
+- Full try/except covers response processing too (AttributeError from malformed responses)
+
+### Review rounds:
+- R1 Adversarial: 4 findings (F1-F4) — all resolved
+- R2 Adversarial: 6 findings — 5 resolved, 1 deferred (SDK exception granularity)
+- R3 User-perspective + Security: 8 findings — 3 MEDIUM fixed (auth/rate-limit/timeout messages), 1 MEDIUM deferred (SEC-4)
+
+### Deferred items:
+- **D-V2-1-1 (MEDIUM):** SDK exception type granularity — callers can't distinguish retryable vs permanent errors. Original exception preserved via `__cause__`. Fix when adding retry logic in V2-3 provider resolver.
+- **D-V2-1-2 (MEDIUM):** No JSON schema validation on LLM response content (SEC-4). Belongs in test_generator/adversarial_reviewer parsing layer. Fix in V2-5 integration tests.
+
+### Awaiting:
+- User's GPT-5.4 adversarial review before merge
+
+---
+
 ## T17: Usage Documentation & Learning Guide (2026-07-21)
 
 **Status:** Complete. README rewritten, 4 new docs created, adversarial findings fixed.

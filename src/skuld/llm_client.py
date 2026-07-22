@@ -30,38 +30,59 @@ class LLMClient(Protocol):
     def generate(self, request: GenerationRequest) -> GenerationResponse: ...
 
 
-class BudgetedLLMClient:
-    """Wraps an LLMClient with token budget enforcement."""
+class SharedBudget:
+    """Mutable token counter shared across multiple BudgetedLLMClient instances."""
 
-    def __init__(self, client: LLMClient, max_tokens: int = 32_000):
+    def __init__(self, max_tokens: int = 32_000):
+        self.max_tokens = max_tokens
+        self.used_tokens = 0
+
+    def reset(self) -> None:
+        """Reset the token counter."""
+        self.used_tokens = 0
+
+
+class BudgetedLLMClient:
+    """Wraps an LLMClient with token budget enforcement.
+
+    When ``shared_budget`` is provided, multiple instances share the same
+    token counter — useful for enforcing a per-run budget across generator,
+    reviewer, and refinement phases.
+    """
+
+    def __init__(
+        self,
+        client: LLMClient,
+        max_tokens: int = 32_000,
+        shared_budget: SharedBudget | None = None,
+    ):
         self._client = client
-        self._max_tokens = max_tokens
-        self._used_tokens = 0
+        self._budget = shared_budget or SharedBudget(max_tokens)
 
     @property
     def used_tokens(self) -> int:
-        return self._used_tokens
+        return self._budget.used_tokens
 
     @property
     def remaining_tokens(self) -> int:
-        return max(0, self._max_tokens - self._used_tokens)
+        return max(0, self._budget.max_tokens - self._budget.used_tokens)
 
     def reset(self) -> None:
         """Reset the token counter. Use for multi-story runs in one session."""
-        self._used_tokens = 0
+        self._budget.reset()
 
     def generate(self, request: GenerationRequest) -> GenerationResponse:
-        if self._used_tokens >= self._max_tokens:
+        if self._budget.used_tokens >= self._budget.max_tokens:
             raise TokenBudgetExceeded(
-                f"Token budget exhausted: {self._used_tokens}/{self._max_tokens} used"
+                f"Token budget exhausted: {self._budget.used_tokens}/{self._budget.max_tokens} used"
             )
         response = self._client.generate(request)
         prompt_tokens = response.prompt_tokens or 0
         completion_tokens = response.completion_tokens or 0
-        self._used_tokens += prompt_tokens + completion_tokens
-        if self._used_tokens > self._max_tokens:
+        self._budget.used_tokens += prompt_tokens + completion_tokens
+        if self._budget.used_tokens > self._budget.max_tokens:
             raise TokenBudgetExceeded(
-                f"Token budget exceeded: {self._used_tokens}/{self._max_tokens} used",
+                f"Token budget exceeded: {self._budget.used_tokens}/{self._budget.max_tokens} used",
                 response=response,
             )
         if response.finish_reason != "stop":

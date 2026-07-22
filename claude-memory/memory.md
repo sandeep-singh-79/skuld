@@ -22,8 +22,15 @@
 - Deferred (V2): NFR (performance, security), accessibility.
 
 ## Active Next Work
-- Phase 1, T1: Project scaffold — COMPLETE.
-- Next: T2 — Models (Story, AcceptanceCriterion, TestCase, RTMEntry, ConfidenceScore).
+- V2-1: AnthropicLLMClient — COMPLETE (34 tests)
+- V2-2: OpenAILLMClient — COMPLETE (31 tests)
+- V2-3: Provider resolution — COMPLETE (wired in end_to_end_flow.py)
+- V2-4: SharedBudget across phases — COMPLETE
+- Prompt-builder caching split + loader-boundary provider config hardening — COMPLETE
+- Documentation updates for real providers — COMPLETE
+- Docs/contract review — COMPLETE
+- Next: resolve docs/contract review findings (release version contract, default model contract, minor doc clarity gaps)
+- After valid API keys are available: real-provider smoke review, cost/cache review, parser/output-contract review
 
 ## Blockers
-- None.
+- Real-provider validation reviews blocked on valid SKULD_ANTHROPIC_KEY and SKULD_OPENAI_KEY.

@@ -16,7 +16,7 @@ from skuld.adversarial_reviewer import (
 from skuld.comment_filter import filter_comments
 from skuld.confidence_scorer import compute_confidence_from_detailed
 from skuld.input_loader import InputValidationError, load_input, validate_raw
-from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, TokenBudgetExceeded, TruncatedResponseError
+from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, SharedBudget, TokenBudgetExceeded, TruncatedResponseError
 from skuld.models import (
     EXIT_INPUT_ERROR,
     EXIT_OK,
@@ -143,10 +143,39 @@ def _fake_refined_cases_json(story_id: str, ac_ids: list[str]) -> str:
 # LLM client resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_llm_clients(config: dict) -> dict:
-    """Returns {"generator": LLMClient, "reviewer": LLMClient, "refinement": LLMClient}.
+def _infer_provider(model_name: str) -> str:
+    """Infer provider from model name prefix."""
+    if model_name.startswith("claude-"):
+        return "anthropic"
+    if model_name.startswith(("gpt-", "o1-", "o3-", "o4-")):
+        return "openai"
+    raise ValueError(
+        f"Cannot determine provider for model {model_name!r}. "
+        "Use model_routing config with explicit provider."
+    )
 
-    Called only when use_fake_llm=False. Raises ValueError if no API key is configured.
+
+def _create_provider_client(provider: str, model: str, temperature: float, max_tokens: int):
+    """Create a provider-specific LLM client."""
+    if provider == "anthropic":
+        from skuld.providers.anthropic_client import AnthropicLLMClient
+        return AnthropicLLMClient(model=model, max_tokens=max_tokens, temperature=temperature)
+    elif provider == "openai":
+        from skuld.providers.openai_client import OpenAILLMClient
+        return OpenAILLMClient(model=model, max_tokens=max_tokens, temperature=temperature)
+    else:
+        raise ValueError(f"Unknown provider {provider!r}. Supported: 'anthropic', 'openai'.")
+
+
+def _resolve_llm_clients(config: dict) -> dict:
+    """Returns {"generator": BudgetedLLMClient, "reviewer": BudgetedLLMClient, "refinement": BudgetedLLMClient}.
+
+    Resolution order:
+    1. config["model_routing"][phase] if present → per-phase model/provider/temperature
+    2. config["generator_model"] / config["reviewer_model"] → infer provider from model name
+    3. Defaults: generator=claude-sonnet-4-20250514, reviewer=gpt-4o
+
+    Each client is wrapped in BudgetedLLMClient.
     """
     # Check API keys
     anthropic_key = os.environ.get("SKULD_ANTHROPIC_KEY")
@@ -156,10 +185,59 @@ def _resolve_llm_clients(config: dict) -> dict:
             "API key not configured. Set SKULD_ANTHROPIC_KEY or SKULD_OPENAI_KEY, or use --dry-run."
         )
 
-    # Real providers (AnthropicLLMClient, OpenAILLMClient) are wired in T14.
-    raise NotImplementedError(
-        "Real LLM providers are not yet implemented. Use --dry-run for local testing."
-    )
+    model_routing = config.get("model_routing")
+
+    if model_routing:
+        # Advanced mode: per-phase config
+        budget = config.get("max_tokens_per_run", 32000)
+        shared = SharedBudget(budget)
+        clients = {}
+        for phase in ("generator", "reviewer", "refinement"):
+            phase_config = model_routing.get(phase)
+            if not phase_config:
+                raise ValueError(f"model_routing missing '{phase}' configuration.")
+            if not isinstance(phase_config, dict):
+                raise ValueError(
+                    f"model_routing.{phase} must be a mapping, got {type(phase_config).__name__}."
+                )
+            model = phase_config.get("model")
+            if not model or not isinstance(model, str) or not model.strip():
+                raise ValueError(
+                    f"model_routing.{phase}.model is required and must be a non-empty string."
+                )
+            model = model.strip()
+            provider = phase_config.get("provider") or _infer_provider(model)
+            temperature = phase_config.get("temperature", 0.7)
+            max_tokens = phase_config.get("max_tokens", 4096)
+            inner = _create_provider_client(provider, model, temperature, max_tokens)
+            clients[phase] = BudgetedLLMClient(inner, shared_budget=shared)
+        return clients
+    else:
+        # Simple mode: top-level generator_model / reviewer_model
+        gen_model = config.get("generator_model", "claude-sonnet-4-20250514")
+        rev_model = config.get("reviewer_model", "gpt-4o")
+        ref_model = gen_model  # refinement uses same as generator
+
+        gen_provider = _infer_provider(gen_model)
+        rev_provider = _infer_provider(rev_model)
+        ref_provider = _infer_provider(ref_model)
+
+        gen_temp = config.get("generator_temperature", 0.7)
+        rev_temp = config.get("reviewer_temperature", 0.2)
+        ref_temp = config.get("refinement_temperature", 0.5)
+        max_tokens = config.get("max_tokens", 4096)
+
+        gen_client = _create_provider_client(gen_provider, gen_model, gen_temp, max_tokens)
+        rev_client = _create_provider_client(rev_provider, rev_model, rev_temp, max_tokens)
+        ref_client = _create_provider_client(ref_provider, ref_model, ref_temp, max_tokens)
+
+        budget = config.get("max_tokens_per_run", 32000)
+        shared = SharedBudget(budget)
+        return {
+            "generator": BudgetedLLMClient(gen_client, shared_budget=shared),
+            "reviewer": BudgetedLLMClient(rev_client, shared_budget=shared),
+            "refinement": BudgetedLLMClient(ref_client, shared_budget=shared),
+        }
 
 
 def _prepare_fake_clients(normalized: dict) -> dict:
@@ -172,7 +250,8 @@ def _prepare_fake_clients(normalized: dict) -> dict:
     refine_response = _fake_refined_cases_json(story_id, ac_ids)
 
     inner = FakeLLMClient(responses=[gen_response, review_response, refine_response])
-    budgeted = BudgetedLLMClient(inner, max_tokens=32000)
+    shared = SharedBudget(32000)
+    budgeted = BudgetedLLMClient(inner, shared_budget=shared)
     return {"generator": budgeted, "reviewer": budgeted, "refinement": budgeted}
 
 
@@ -219,6 +298,17 @@ def _run_from_package(
             f"generator_model and reviewer_model are the same ('{config['generator_model']}') "
             "— adversarial review effectiveness reduced"
         )
+    model_routing = config.get("model_routing")
+    if model_routing:
+        gen_routing = model_routing.get("generator", {})
+        rev_routing = model_routing.get("reviewer", {})
+        gen_model = gen_routing.get("model", "") if isinstance(gen_routing, dict) else ""
+        rev_model = rev_routing.get("model", "") if isinstance(rev_routing, dict) else ""
+        if gen_model and rev_model and gen_model == rev_model:
+            warnings.append(
+                f"model_routing: generator and reviewer use the same model ('{gen_model}') "
+                "— adversarial review effectiveness reduced"
+            )
 
     # 3. Resolve LLM clients
     if use_fake_llm:
@@ -226,7 +316,7 @@ def _run_from_package(
     else:
         try:
             clients = _resolve_llm_clients(config)
-        except (ValueError, NotImplementedError) as exc:
+        except ValueError as exc:
             return FlowResult(exit_code=EXIT_INPUT_ERROR, message=str(exc), output_path=None)
 
     # 4. Generate (Pass 1)

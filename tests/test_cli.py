@@ -31,8 +31,8 @@ def valid_input_file(tmp_path):
             {"id": "AC-1", "description": "User can log in with email and password"},
         ],
         "config": {
-            "generator_model": "claude-sonnet-4",
-            "reviewer_model": "gpt-5.5",
+            "generator_model": "claude-sonnet-4-20250514",
+            "reviewer_model": "gpt-4o",
         },
     }
     path = tmp_path / "input.yaml"
@@ -51,8 +51,8 @@ def multi_ac_input_file(tmp_path):
             {"id": "AC-3", "description": "Error on invalid card", "criticality": "medium"},
         ],
         "config": {
-            "generator_model": "claude-sonnet-4",
-            "reviewer_model": "gpt-5.5",
+            "generator_model": "claude-sonnet-4-20250514",
+            "reviewer_model": "gpt-4o",
         },
     }
     path = tmp_path / "checkout.yaml"

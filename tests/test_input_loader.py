@@ -273,8 +273,8 @@ class TestConfigDefaults:
     def test_missing_config_gets_defaults(self):
         result = validate_raw(VALID_INPUT)
         config = result["config"]
-        assert config["generator_model"] == "claude-sonnet-4"
-        assert config["reviewer_model"] == "gpt-5.5"
+        assert config["generator_model"] == "claude-sonnet-4-20250514"
+        assert config["reviewer_model"] == "gpt-4o"
         assert config["min_negative_per_ac"] == 1
         assert config["min_edge_case_per_ac"] == 1
         assert config["output_format"] == "markdown"
@@ -282,23 +282,224 @@ class TestConfigDefaults:
     def test_provided_config_preserved(self):
         data = {
             **VALID_INPUT,
-            "config": {"generator_model": "gpt", "reviewer_model": "claude", "output_format": "yaml"},
+            "config": {"generator_model": "gpt", "reviewer_model": "claude", "output_format": "json"},
         }
         result = validate_raw(data)
         assert result["config"]["generator_model"] == "gpt"
         assert result["config"]["reviewer_model"] == "claude"
-        assert result["config"]["output_format"] == "yaml"
+        assert result["config"]["output_format"] == "json"
 
     def test_partial_config_fills_missing(self):
         data = {**VALID_INPUT, "config": {"generator_model": "ollama"}}
         result = validate_raw(data)
         assert result["config"]["generator_model"] == "ollama"
-        assert result["config"]["reviewer_model"] == "gpt-5.5"  # default
+        assert result["config"]["reviewer_model"] == "gpt-4o"  # default
 
     def test_explicit_null_config_gets_defaults(self):
         data = {**VALID_INPUT, "config": None}
         result = validate_raw(data)
-        assert result["config"]["generator_model"] == "claude-sonnet-4"
+        assert result["config"]["generator_model"] == "claude-sonnet-4-20250514"
+
+
+class TestProviderConfigValidation:
+    def test_top_level_provider_config_numeric_strings_are_coerced(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "generator_temperature": "0.3",
+                "reviewer_temperature": "0.2",
+                "refinement_temperature": "0.5",
+                "max_tokens": "8192",
+                "max_tokens_per_run": "64000",
+            },
+        }
+        result = validate_raw(data)
+        config = result["config"]
+        assert config["generator_temperature"] == 0.3
+        assert config["reviewer_temperature"] == 0.2
+        assert config["refinement_temperature"] == 0.5
+        assert config["max_tokens"] == 8192
+        assert config["max_tokens_per_run"] == 64000
+
+    def test_invalid_top_level_temperature_raises(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "generator_temperature": "hot",
+            },
+        }
+        with pytest.raises(InputValidationError, match="generator_temperature"):
+            validate_raw(data)
+
+    def test_negative_max_tokens_raises(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "max_tokens": -1,
+            },
+        }
+        with pytest.raises(InputValidationError, match="max_tokens"):
+            validate_raw(data)
+
+    def test_model_routing_numeric_strings_are_coerced(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {
+                        "model": "claude-sonnet-4-20250514",
+                        "provider": "anthropic",
+                        "temperature": "0.7",
+                        "max_tokens": "4096",
+                    },
+                    "reviewer": {
+                        "model": "gpt-4o",
+                        "provider": "openai",
+                        "temperature": "0.2",
+                        "max_tokens": "2048",
+                    },
+                    "refinement": {
+                        "model": "claude-sonnet-4-20250514",
+                        "provider": "anthropic",
+                        "temperature": "0.5",
+                        "max_tokens": "4096",
+                    },
+                },
+                "max_tokens_per_run": "32000",
+            },
+        }
+        result = validate_raw(data)
+        routing = result["config"]["model_routing"]
+        assert routing["generator"]["temperature"] == 0.7
+        assert routing["generator"]["max_tokens"] == 4096
+        assert routing["reviewer"]["temperature"] == 0.2
+        assert routing["reviewer"]["max_tokens"] == 2048
+        assert result["config"]["max_tokens_per_run"] == 32000
+
+    def test_model_routing_invalid_provider_raises(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "azure-openai"},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                }
+            },
+        }
+        with pytest.raises(InputValidationError, match="provider"):
+            validate_raw(data)
+
+    def test_model_routing_provider_model_mismatch_raises(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {"model": "gpt-4o", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai"},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                }
+            },
+        }
+        with pytest.raises(InputValidationError, match="generator.*provider"):
+            validate_raw(data)
+
+    def test_model_routing_explicit_provider_allows_unknown_alias(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {"model": "claude-enterprise-prod", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai"},
+                    "refinement": {"model": "claude-enterprise-prod", "provider": "anthropic"},
+                }
+            },
+        }
+        result = validate_raw(data)
+        routing = result["config"]["model_routing"]
+        assert routing["generator"]["provider"] == "anthropic"
+        assert routing["refinement"]["provider"] == "anthropic"
+
+    def test_model_routing_known_prefix_mismatch_still_raises(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {"model": "gpt-4o", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai"},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                }
+            },
+        }
+        with pytest.raises(InputValidationError, match="generator.*provider"):
+            validate_raw(data)
+
+    def test_bool_temperature_rejected(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "generator_temperature": True,
+            },
+        }
+        with pytest.raises(InputValidationError, match="generator_temperature"):
+            validate_raw(data)
+
+    def test_bool_max_tokens_rejected(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "max_tokens": True,
+            },
+        }
+        with pytest.raises(InputValidationError, match="max_tokens"):
+            validate_raw(data)
+
+    def test_float_max_tokens_rejected(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "max_tokens": 1.9,
+            },
+        }
+        with pytest.raises(InputValidationError, match="max_tokens"):
+            validate_raw(data)
+
+    def test_float_string_max_tokens_rejected(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+                "max_tokens": "1.9",
+            },
+        }
+        with pytest.raises(InputValidationError, match="max_tokens"):
+            validate_raw(data)
+
+    def test_model_routing_missing_phase_raises_at_loader_boundary(self):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "model_routing": {
+                    "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai"},
+                }
+            },
+        }
+        with pytest.raises(InputValidationError, match="refinement"):
+            validate_raw(data)
 
 
 # ---------------------------------------------------------------------------

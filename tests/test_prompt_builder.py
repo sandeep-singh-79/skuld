@@ -59,7 +59,7 @@ def sample_test_cases_json() -> str:
     return json.dumps({
         "test_cases": [
             {
-                "id": "TC-001",
+                "id": "USER-TC-9917",
                 "story_id": "PROJ-1234",
                 "ac_ids": ["AC-1"],
                 "test_type": "functional",
@@ -77,8 +77,8 @@ def sample_test_cases_json() -> str:
 @pytest.fixture
 def sample_review_feedback_json() -> str:
     return json.dumps({
-        "flagged_tests": ["TC-001"],
-        "missing_scenarios": ["Concurrent reset attempts"],
+        "flagged_tests": ["USER-TC-9917"],
+        "missing_scenarios": ["Tenant-specific concurrent reset race"],
         "quality_scores": {"completeness": 0.6, "clarity": 0.8},
         "suggestions": ["Add negative test for invalid email format"],
     })
@@ -112,6 +112,47 @@ class TestBuildGeneratorPrompt:
         assert "test_cases" in result.user_prompt
         assert "ac_ids" in result.user_prompt
         assert "expected_result" in result.user_prompt
+
+    def test_system_prompt_contains_requirements_and_schema(self, sample_story, sample_acs, sample_config):
+        result = build_generator_prompt(sample_story, sample_acs, sample_config)
+        assert "Include functional, negative, and edge-case test types" in result.system_prompt
+        assert "test_cases" in result.system_prompt
+        assert "ac_ids" in result.system_prompt
+
+    def test_system_prompt_excludes_per_request_minimums(self, sample_story, sample_acs, sample_config):
+        config = {**sample_config, "min_negative_per_ac": 3, "min_edge_case_per_ac": 4}
+        result = build_generator_prompt(sample_story, sample_acs, config)
+        assert "Generate at least 3 negative test(s) per AC" not in result.system_prompt
+        assert "Generate at least 4 edge-case test(s) per AC" not in result.system_prompt
+
+    def test_user_prompt_contains_per_request_minimums(self, sample_story, sample_acs, sample_config):
+        config = {**sample_config, "min_negative_per_ac": 3, "min_edge_case_per_ac": 4}
+        result = build_generator_prompt(sample_story, sample_acs, config)
+        assert "Generate at least 3 negative test(s) per AC" in result.user_prompt
+        assert "Generate at least 4 edge-case test(s) per AC" in result.user_prompt
+
+    def test_system_prompt_excludes_story_specific_content(self, sample_story, sample_acs, sample_config):
+        result = build_generator_prompt(sample_story, sample_acs, sample_config)
+        assert sample_story["id"] not in result.system_prompt
+        assert sample_story["title"] not in result.system_prompt
+        assert sample_story["description"] not in result.system_prompt
+
+    def test_system_prompt_excludes_comments_and_domain_context(self, sample_story, sample_acs, sample_config, sample_comments):
+        result = build_generator_prompt(
+            sample_story,
+            sample_acs,
+            sample_config,
+            comments=sample_comments,
+            domain_context="tenant secret business rule",
+        )
+        for comment in sample_comments:
+            assert comment not in result.system_prompt
+        assert "tenant secret business rule" not in result.system_prompt
+
+    def test_user_prompt_no_longer_contains_generator_schema(self, sample_story, sample_acs, sample_config):
+        result = build_generator_prompt(sample_story, sample_acs, sample_config)
+        assert "Respond with ONLY valid JSON matching this schema" not in result.user_prompt
+        assert "```json" not in result.user_prompt
 
     def test_comments_included_when_provided(self, sample_story, sample_acs, sample_config, sample_comments):
         result = build_generator_prompt(sample_story, sample_acs, sample_config, comments=sample_comments)
@@ -165,13 +206,24 @@ class TestBuildReviewerPrompt:
 
     def test_user_prompt_contains_test_cases(self, sample_test_cases_json, sample_acs):
         result = build_reviewer_prompt(sample_test_cases_json, sample_acs)
-        assert "TC-001" in result.user_prompt
+        assert "USER-TC-9917" in result.user_prompt
 
     def test_user_prompt_contains_review_feedback_schema(self, sample_test_cases_json, sample_acs):
         result = build_reviewer_prompt(sample_test_cases_json, sample_acs)
         assert "flagged_tests" in result.user_prompt
         assert "missing_scenarios" in result.user_prompt
         assert "quality_scores" in result.user_prompt
+
+    def test_system_prompt_contains_review_instructions_and_schema(self, sample_test_cases_json, sample_acs):
+        result = build_reviewer_prompt(sample_test_cases_json, sample_acs)
+        assert "Check each AC has at least one functional" in result.system_prompt
+        assert "flagged_tests" in result.system_prompt
+        assert "missing_scenarios" in result.system_prompt
+
+    def test_system_prompt_excludes_generated_test_case_payload(self, sample_test_cases_json, sample_acs):
+        result = build_reviewer_prompt(sample_test_cases_json, sample_acs)
+        assert "USER-TC-9917" not in result.system_prompt
+        assert sample_test_cases_json not in result.system_prompt
 
     def test_user_prompt_contains_acs(self, sample_test_cases_json, sample_acs):
         result = build_reviewer_prompt(sample_test_cases_json, sample_acs)
@@ -190,17 +242,30 @@ class TestBuildRefinementPrompt:
 
     def test_user_prompt_contains_original_tests(self, sample_test_cases_json, sample_review_feedback_json, sample_acs):
         result = build_refinement_prompt(sample_test_cases_json, sample_review_feedback_json, sample_acs)
-        assert "TC-001" in result.user_prompt
+        assert "USER-TC-9917" in result.user_prompt
 
     def test_user_prompt_contains_review_feedback(self, sample_test_cases_json, sample_review_feedback_json, sample_acs):
         result = build_refinement_prompt(sample_test_cases_json, sample_review_feedback_json, sample_acs)
-        assert "flagged_tests" in result.user_prompt or "TC-001" in result.user_prompt
-        assert "missing_scenarios" in result.user_prompt or "Concurrent reset" in result.user_prompt
+        assert "flagged_tests" in result.user_prompt or "USER-TC-9917" in result.user_prompt
+        assert "missing_scenarios" in result.user_prompt or "Tenant-specific concurrent reset race" in result.user_prompt
 
     def test_system_prompt_instructs_to_fix_flagged(self, sample_test_cases_json, sample_review_feedback_json, sample_acs):
         result = build_refinement_prompt(sample_test_cases_json, sample_review_feedback_json, sample_acs)
         lower = result.system_prompt.lower()
         assert "fix" in lower or "address" in lower or "refine" in lower
+
+    def test_system_prompt_contains_refinement_instructions_and_schema(self, sample_test_cases_json, sample_review_feedback_json, sample_acs):
+        result = build_refinement_prompt(sample_test_cases_json, sample_review_feedback_json, sample_acs)
+        assert "Retain tests that were NOT flagged" in result.system_prompt
+        assert "test_cases" in result.system_prompt
+        assert "expected_result" in result.system_prompt
+
+    def test_system_prompt_excludes_original_tests_and_feedback_payload(self, sample_test_cases_json, sample_review_feedback_json, sample_acs):
+        result = build_refinement_prompt(sample_test_cases_json, sample_review_feedback_json, sample_acs)
+        assert "USER-TC-9917" not in result.system_prompt
+        assert "flagged_tests" not in result.system_prompt
+        assert sample_test_cases_json not in result.system_prompt
+        assert sample_review_feedback_json not in result.system_prompt
 
 
 # ---------------------------------------------------------------------------

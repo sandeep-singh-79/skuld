@@ -29,6 +29,10 @@ Release context → [ReleaseRadar] → Risk Score
 git clone git@github.com:sandeep-singh-79/Skuld.git
 cd Skuld
 pip install -e ".[dev]"
+# Install with provider support (pick one or both)
+pip install -e ".[anthropic]"    # Anthropic (Claude models)
+pip install -e ".[openai]"       # OpenAI (GPT models)
+pip install -e ".[providers]"    # Both providers
 ```
 
 Verify:
@@ -40,8 +44,20 @@ skuld --help
 ## Quick Start
 
 ```bash
-# Generate test cases from a story YAML (dry-run — no API keys needed)
-skuld generate benchmarks/login-mfa.input.yaml --dry-run
+# Default config uses Anthropic for generation and OpenAI for review,
+# so set both keys before running with real providers.
+export SKULD_ANTHROPIC_KEY="sk-ant-..."
+export SKULD_OPENAI_KEY="sk-..."
+# Windows PowerShell: use $env:SKULD_ANTHROPIC_KEY = "sk-ant-..."
+
+# Generate test cases with real LLM providers
+skuld generate story.yaml
+
+# If you only have one provider configured, update story.yaml so all
+# routed phases use models from that provider before running generate.
+
+# Or use dry-run mode (no API keys needed)
+skuld generate story.yaml --dry-run
 
 # Score an existing test case set
 skuld score test_cases.json --format markdown
@@ -61,10 +77,12 @@ For full command reference, worked examples, and input/output formats see:
 
 ## Release Status
 
-- Current release line: 0.1.x
-- Current version: 0.1.0
-- Runtime behavior currently uses FakeLLM for dry-run style pipeline execution.
-- Real provider integrations are planned for a 0.2.x milestone.
+- Current version: **0.2.0**
+- Real LLM providers (Anthropic, OpenAI) are wired and ready.
+- Install provider extras: `pip install -e ".[anthropic]"` or `pip install -e ".[openai]"`
+- Default config requires both `SKULD_ANTHROPIC_KEY` and `SKULD_OPENAI_KEY`
+- Single-provider runs are supported when your input config routes every phase to that provider
+- `--dry-run` mode still available for local testing without API keys.
 
 Release notes and version history: [CHANGELOG.md](CHANGELOG.md)
 

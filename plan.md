@@ -678,79 +678,75 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | V2 — Real LLM Providers (V2-1..V2-4 complete) |
-| Last Change | V2-4: SharedBudget + provider resolution fixes |
-| Tests | 597 passing |
-| Coverage | 96% overall, all modules ≥90% |
-| Blockers | None |
+| Phase | V2 complete (v0.2.0 released). V3 planned. |
+| Last Change | v0.2.0 released — real LLM providers, SharedBudget, docs |
+| Tests | 624 passing |
+| Coverage | ~96% overall, all modules ≥90% |
+| Blockers | V2-5 and real-provider reviews blocked on API keys |
 
 ---
 
-## V2 Future Implementation Plan
+## V3 Plan (v0.3.0) — Real-World Hardening
 
-**Goal:** Turn Skuld from a deterministic demo tool into a production-ready AI test case generator with real LLM providers, enforced quality contracts, and sprint-level workflow integration.
+**Trigger:** After real-model testing with valid API keys.
+**Goal:** Validate Skuld against real LLM responses, harden prompt security, and add retry resilience.
 
-### Track 1: Real LLM Providers (highest priority)
+### v0.3.0 Scope
 
-Wire actual LLM providers so users can generate meaningful test cases without `--dry-run`.
+| # | Item | Depends on | Effort |
+|---|------|-----------|--------|
+| V2-5 | Integration tests: truncated/budget-exceeded with real providers | API keys | Small |
+| V2-12 | Prompt injection tests (malicious story/AC content) | None | Small |
+| D-V2-1-1 | SDK exception granularity (retryable vs permanent) + retry logic | None | Medium |
+| D-V2-1-2 | JSON schema validation on LLM response content | None | Small |
+| D-V2-PROMPT-1 | Validate Anthropic cache effectiveness with real usage counters | API keys | Small |
+| V2-9 | Exit code 3 for environment errors vs input errors | None | Small |
+| LOW-fix | Deduplicate same-model warning (loader vs pipeline) | None | Trivial |
 
-| Task | Description |
-|------|-------------|
-| V2-1 | `src/skuld/providers/anthropic_client.py` — AnthropicLLMClient with API key from env ✅ |
-| V2-2 | `src/skuld/providers/openai_client.py` — OpenAILLMClient with API key from env ✅ |
-| V2-3 | Provider resolution in `_resolve_llm_clients()` — use config to pick provider ✅ |
-| V2-4 | All providers wrapped by `BudgetedLLMClient` (truncation + budget enforcement) ✅ |
-| V2-5 | Integration tests for truncated generator/reviewer/refinement on real wiring path |
-| V2-6 | API key setup documentation in USAGE-GUIDE.md |
+### v0.3.0 Sequencing
 
-### Track 2: Deferred Hardening
+1. **V2-12** — Prompt injection tests (no API key needed, can start immediately)
+2. **D-V2-1-1** — Retry logic with retryable/permanent error classification
+3. **V2-9** — Exit code 3 for environment errors
+4. **LOW-fix** — Deduplicate same-model warning
+5. **V2-5** — Real-provider truncation/budget integration tests (needs keys)
+6. **D-V2-1-2** — JSON schema validation on LLM responses (needs keys for realistic input)
+7. **D-V2-PROMPT-1** — Cache effectiveness validation (needs keys)
 
-Items explicitly deferred during Phase 4 adversarial review rounds.
+### v0.3.0 Exit Criteria
 
-| Task | Source | Description |
-|------|--------|-------------|
-| V2-7 | D15-3 | `strategy_ref` / HITL approval enforcement + benchmark coverage |
-| V2-8 | D15-2 | Scenario-sensitive fake fixtures for richer benchmark contracts |
-| V2-9 | D14-4 | Exit code 3 for environment errors (no API key) vs input errors |
-| V2-10 | T6-4 | Orphan penalty weight calibration with real-world data |
-| V2-11 | T5b-4 | Frozen copies for `entries` property (immutability for external consumers) |
-| V2-12 | P1-11 | Prompt injection tests for malicious story/AC content |
+- All prompt injection tests pass with adversarial content
+- Retry logic covers rate-limit and transient connection errors
+- At least one real Anthropic call and one real OpenAI call complete successfully
+- Cache counters verified moving on repeated Anthropic calls
+- Real LLM JSON output satisfies parsing contracts
+- Exit codes correctly distinguish env errors from input errors
 
-### Track 3: Pipeline Evolution
+---
 
-Design features deferred from MVP scope.
+## Future (v0.4.0+) — Pipeline Evolution & Governance
 
-| Task | Description |
-|------|-------------|
+Items deferred beyond v0.3.0. Pick up when core real-provider path is battle-tested.
+
+### Pipeline Evolution
+
+| # | Item |
+|---|------|
 | V2-13 | Configurable iteration depth (threshold-based termination loop) |
-| V2-14 | NFR coverage types (performance, security) beyond functional/negative/edge |
-| V2-15 | Red-path / degraded benchmark scenario with scenario-specific fake fixtures |
-| V2-16 | RTM `compact()` method to prune superseded/deprecated entries |
+| V2-14 | NFR coverage types (performance, security) |
+| V2-15 | Scenario-sensitive benchmark fixtures |
+| V2-16 | RTM `compact()` for pruning dead entries |
 | V2-17 | Cross-story AC registry warnings (semantic overlap detection) |
 
-### V2 Sequencing (prioritized)
+### Governance & Hardening
 
-**Priority 1 — Real LLM Providers + Prompt Safety**
-1. V2-1: AnthropicLLMClient
-2. V2-2: OpenAILLMClient
-3. V2-3: Provider resolution in `_resolve_llm_clients()`
-4. V2-4: All providers wrapped by `BudgetedLLMClient`
-5. V2-5: Truncation integration tests on real wiring path
-6. V2-12: Prompt injection tests (moved up — live risk once real providers are wired)
-7. V2-6: API key setup documentation
+| # | Item | Origin |
+|---|------|--------|
+| V2-7 | `strategy_ref` / HITL enforcement | D15-3 |
+| V2-8 | Scenario-sensitive fake fixtures for benchmarks | D15-2 |
+| V2-10 | Orphan penalty weight calibration with real-world data | T6-4 |
+| V2-11 | Frozen copies for `entries` property | T5b-4 |
 
-**Priority 2 — Pipeline Evolution**
-1. V2-13: Configurable iteration depth
-2. V2-14: NFR coverage types (performance, security)
-3. V2-15: Scenario-sensitive benchmark fixtures
-4. V2-16: RTM `compact()` for pruning dead entries
-5. V2-17: Cross-story AC registry warnings
+---
 
-**Priority 3 — Deferred Hardening**
-1. V2-7: `strategy_ref` / HITL enforcement
-2. V2-8: Scenario-sensitive fake fixtures for benchmarks
-3. V2-9: Exit code 3 for environment errors
-4. V2-10: Orphan penalty weight calibration
-5. V2-11: Frozen copies for `entries` property
-
-**Rule:** Do not start V2 until PR #2 is merged to main. V2 branches from the merged Phase 4 baseline.
+## V2 Implementation Record (v0.2.0 — shipped 2026-07-22)

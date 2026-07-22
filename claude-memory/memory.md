@@ -22,15 +22,17 @@
 - Deferred (V2): NFR (performance, security), accessibility.
 
 ## Active Next Work
-- V2-1: AnthropicLLMClient — COMPLETE (34 tests)
-- V2-2: OpenAILLMClient — COMPLETE (31 tests)
-- V2-3: Provider resolution — COMPLETE (wired in end_to_end_flow.py)
-- V2-4: SharedBudget across phases — COMPLETE
-- Prompt-builder caching split + loader-boundary provider config hardening — COMPLETE
-- Documentation updates for real providers — COMPLETE
-- Docs/contract review — COMPLETE
-- Next: resolve docs/contract review findings (release version contract, default model contract, minor doc clarity gaps)
-- After valid API keys are available: real-provider smoke review, cost/cache review, parser/output-contract review
+- v0.2.0 released and tagged (2026-07-22)
+- V2-1 through V2-4 + V2-6 + docs: COMPLETE
+- Next milestone: **v0.3.0 — Real-World Hardening**
+  - V2-12: Prompt injection tests (can start immediately, no API keys needed)
+  - D-V2-1-1: Retry logic with retryable/permanent error classification
+  - V2-9: Exit code 3 for environment errors
+  - LOW-fix: Deduplicate same-model warning
+  - V2-5: Real-provider truncation/budget integration tests (needs keys)
+  - D-V2-1-2: JSON schema validation on LLM responses (needs keys)
+  - D-V2-PROMPT-1: Cache effectiveness validation (needs keys)
+- Trigger for v0.3.0: after real-model testing with valid API keys
 
 ## Blockers
-- Real-provider validation reviews blocked on valid SKULD_ANTHROPIC_KEY and SKULD_OPENAI_KEY.
+- Real-provider validation items blocked on valid SKULD_ANTHROPIC_KEY and SKULD_OPENAI_KEY.

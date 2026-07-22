@@ -103,12 +103,17 @@ Optional configuration block. If omitted, defaults apply.
 
 | Field | Type | Default | Valid Values | Description |
 |-------|------|---------|--------------|-------------|
-| `generator_model` | string | `"claude-sonnet-4"` | Any model identifier | LLM for test case generation |
-| `reviewer_model` | string | `"gpt-5.5"` | Any model identifier | LLM for adversarial review (must differ from generator) |
+| `generator_model` | string | `"claude-sonnet-4-20250514"` | Any model identifier | LLM for test case generation |
+| `reviewer_model` | string | `"gpt-4o"` | Any model identifier | LLM for adversarial review (must differ from generator) |
 | `min_negative_per_ac` | int | `1` | ≥1 | Minimum negative tests required per AC |
 | `min_edge_case_per_ac` | int | `1` | ≥1 | Minimum edge-case tests required per AC |
 | `output_format` | string | `"markdown"` | `markdown`, `json` | Default output format |
 | `filter_comments` | bool | `true` | `true`, `false` | Run signal-over-noise filter on comments before injection |
+| `generator_temperature` | number | `0.7` | `0.0`–`2.0` | Temperature for generator phase (simple mode) |
+| `reviewer_temperature` | number | `0.2` | `0.0`–`2.0` | Temperature for reviewer phase (simple mode) |
+| `refinement_temperature` | number | `0.5` | `0.0`–`2.0` | Temperature for refinement phase (simple mode) |
+| `max_tokens` | integer | `4096` | `> 0` | Max output tokens per LLM call |
+| `max_tokens_per_run` | integer | `32000` | `> 0` | Total token budget shared across all phases |
 
 ---
 
@@ -168,4 +173,68 @@ Run it:
 
 ```bash
 skuld generate story.yaml --dry-run
+```
+
+---
+
+## `config.model_routing` (Advanced)
+
+Per-phase model routing for full control over which provider/model is used at each pipeline stage.
+
+When `model_routing` is present, it takes precedence over top-level `generator_model`/`reviewer_model`.
+
+| Field | Type | Required | Default | Valid Values |
+|-------|------|----------|---------|--------------|
+| `generator` | object | Yes (if routing used) | — | Phase config object |
+| `reviewer` | object | Yes (if routing used) | — | Phase config object |
+| `refinement` | object | Yes (if routing used) | — | Phase config object |
+
+### Phase Config Object
+
+| Field | Type | Required | Default | Valid Values |
+|-------|------|----------|---------|--------------|
+| `model` | string | Yes | — | Any valid model name |
+| `provider` | string | No | Inferred from model name | `anthropic`, `openai` |
+| `temperature` | number | No | `0.7` | `0.0` to `2.0` |
+| `max_tokens` | integer | No | `4096` | `> 0` |
+
+### Provider inference rules
+
+| Model prefix | Inferred provider |
+|-------------|-------------------|
+| `claude-*` | `anthropic` |
+| `gpt-*` | `openai` |
+| `o1-*`, `o3-*`, `o4-*` | `openai` |
+| Other | Must supply explicit `provider` |
+
+### Validation rules
+
+- All three phases (`generator`, `reviewer`, `refinement`) must be present.
+- `model` must be a non-empty string.
+- If `provider` is explicit and model has a known prefix, they must match.
+- `temperature` must be a number between 0.0 and 2.0.
+- `max_tokens` must be a positive integer.
+- Boolean values (`true`/`false`) are rejected for numeric fields.
+
+### Example
+
+```yaml
+config:
+  max_tokens_per_run: 48000
+  model_routing:
+    generator:
+      model: "claude-sonnet-4-20250514"
+      provider: "anthropic"
+      temperature: 0.7
+      max_tokens: 4096
+    reviewer:
+      model: "gpt-4o"
+      provider: "openai"
+      temperature: 0.2
+      max_tokens: 4096
+    refinement:
+      model: "claude-sonnet-4-20250514"
+      provider: "anthropic"
+      temperature: 0.5
+      max_tokens: 4096
 ```

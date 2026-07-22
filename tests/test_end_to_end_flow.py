@@ -28,8 +28,8 @@ def _make_normalized_input() -> dict:
             {"id": "AC-2", "description": "User sees error on invalid credentials", "criticality": "medium"},
         ],
         "config": {
-            "generator_model": "claude-sonnet-4",
-            "reviewer_model": "gpt-5.5",
+            "generator_model": "claude-sonnet-4-20250514",
+            "reviewer_model": "gpt-4o",
             "min_negative_per_ac": 1,
             "min_edge_case_per_ac": 1,
             "output_format": "markdown",
@@ -52,8 +52,8 @@ def _make_raw_yaml_input() -> dict:
             {"id": "AC-2", "description": "User sees error on invalid credentials", "criticality": "medium"},
         ],
         "config": {
-            "generator_model": "claude-sonnet-4",
-            "reviewer_model": "gpt-5.5",
+            "generator_model": "claude-sonnet-4-20250514",
+            "reviewer_model": "gpt-4o",
         },
         "comments": ["What if the user enters a SQL injection payload?"],
     }
@@ -254,8 +254,22 @@ class TestPipelineFeatures:
         from skuld.end_to_end_flow import run_pipeline_from_dict
 
         data = _make_raw_yaml_input()
-        data["config"]["generator_model"] = "gpt-5.5"
-        data["config"]["reviewer_model"] = "gpt-5.5"
+        data["config"]["generator_model"] = "gpt-4o"
+        data["config"]["reviewer_model"] = "gpt-4o"
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        assert any("same" in w.lower() and "adversarial" in w.lower() for w in result.warnings)
+
+    def test_same_model_warning_model_routing(self):
+        """Same generator/reviewer in model_routing emits a warning."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        data["config"]["model_routing"] = {
+            "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+            "reviewer": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+            "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+        }
         result = run_pipeline_from_dict(data, use_fake_llm=True)
         assert result.exit_code == EXIT_OK
         assert any("same" in w.lower() and "adversarial" in w.lower() for w in result.warnings)
@@ -317,16 +331,263 @@ class TestPipelineApiKeyErrors:
         assert result.exit_code == EXIT_INPUT_ERROR
         assert "API key not configured" in result.message
 
-    def test_api_key_present_without_provider_returns_not_implemented(self, monkeypatch):
-        """use_fake_llm=False with API key set → EXIT_INPUT_ERROR with actionable message."""
-        from skuld.end_to_end_flow import run_pipeline_from_dict
+    def test_real_provider_resolution_attempted(self, monkeypatch):
+        """use_fake_llm=False with API key set → attempts real provider creation."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from skuld.llm_client import BudgetedLLMClient
+        from unittest.mock import patch, MagicMock
 
         monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test-dummy")
 
-        data = _make_raw_yaml_input()
-        result = run_pipeline_from_dict(data, use_fake_llm=False)
-        assert result.exit_code == EXIT_INPUT_ERROR
-        assert "not yet implemented" in result.message
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient") as mock_ac:
+            config = {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "claude-haiku-4-20250514",
+            }
+            clients = _resolve_llm_clients(config)
+
+        # Provider resolution succeeded and produced budgeted clients
+        assert isinstance(clients["generator"], BudgetedLLMClient)
+        assert isinstance(clients["reviewer"], BudgetedLLMClient)
+        assert isinstance(clients["refinement"], BudgetedLLMClient)
+        # AnthropicLLMClient was called for all three phases
+        assert mock_ac.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: TestProviderResolution (V2-3, V2-4)
+# ---------------------------------------------------------------------------
+
+class TestProviderResolution:
+    """Tests for _resolve_llm_clients and helper functions."""
+
+    def test_infer_provider_claude(self):
+        from skuld.end_to_end_flow import _infer_provider
+        assert _infer_provider("claude-sonnet-4-20250514") == "anthropic"
+        assert _infer_provider("claude-haiku-4-20250514") == "anthropic"
+
+    def test_infer_provider_openai(self):
+        from skuld.end_to_end_flow import _infer_provider
+        assert _infer_provider("gpt-4o") == "openai"
+        assert _infer_provider("gpt-5.5") == "openai"
+        assert _infer_provider("o1-preview") == "openai"
+        assert _infer_provider("o3-mini") == "openai"
+        assert _infer_provider("o4-mini") == "openai"
+
+    def test_infer_provider_unknown_raises(self):
+        from skuld.end_to_end_flow import _infer_provider
+        with pytest.raises(ValueError, match="Cannot determine provider"):
+            _infer_provider("llama-3")
+
+    def test_create_provider_unknown_raises(self):
+        from skuld.end_to_end_flow import _create_provider_client
+        with pytest.raises(ValueError, match="Unknown provider"):
+            _create_provider_client("unknown", "model-x", 0.7, 4096)
+
+    def test_simple_mode_resolution(self, monkeypatch):
+        """Simple mode creates 3 budgeted clients from generator_model/reviewer_model."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from skuld.llm_client import BudgetedLLMClient
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        monkeypatch.setenv("SKULD_OPENAI_KEY", "sk-test")
+
+        mock_anthropic = MagicMock()
+        mock_openai = MagicMock()
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient", return_value=mock_anthropic) as mock_ac, \
+             patch("skuld.providers.openai_client.OpenAILLMClient", return_value=mock_openai) as mock_oc:
+            config = {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+            }
+            clients = _resolve_llm_clients(config)
+
+        assert isinstance(clients["generator"], BudgetedLLMClient)
+        assert isinstance(clients["reviewer"], BudgetedLLMClient)
+        assert isinstance(clients["refinement"], BudgetedLLMClient)
+        # Generator and refinement use anthropic, reviewer uses openai
+        mock_ac.assert_called()  # at least once for generator (+ once for refinement)
+        mock_oc.assert_called_once()  # once for reviewer
+
+    def test_model_routing_mode_resolution(self, monkeypatch):
+        """model_routing provides per-phase config."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from skuld.llm_client import BudgetedLLMClient
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        monkeypatch.setenv("SKULD_OPENAI_KEY", "sk-test")
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient") as mock_ac, \
+             patch("skuld.providers.openai_client.OpenAILLMClient") as mock_oc:
+            config = {
+                "model_routing": {
+                    "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic", "temperature": 0.7},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai", "temperature": 0.2},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic", "temperature": 0.5},
+                }
+            }
+            clients = _resolve_llm_clients(config)
+
+        assert isinstance(clients["generator"], BudgetedLLMClient)
+        assert isinstance(clients["reviewer"], BudgetedLLMClient)
+        assert isinstance(clients["refinement"], BudgetedLLMClient)
+
+    def test_model_routing_missing_phase_raises(self, monkeypatch):
+        """model_routing with missing phase raises ValueError."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+
+        config = {
+            "model_routing": {
+                "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                # missing reviewer and refinement
+            }
+        }
+        with pytest.raises(ValueError, match="reviewer"):
+            _resolve_llm_clients(config)
+
+    def test_model_routing_infers_provider_from_model(self, monkeypatch):
+        """model_routing without explicit provider infers from model name."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from unittest.mock import patch
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        monkeypatch.setenv("SKULD_OPENAI_KEY", "sk-test")
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient") as mock_ac, \
+             patch("skuld.providers.openai_client.OpenAILLMClient") as mock_oc:
+            config = {
+                "model_routing": {
+                    "generator": {"model": "claude-sonnet-4-20250514", "temperature": 0.7},
+                    "reviewer": {"model": "gpt-4o", "temperature": 0.2},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "temperature": 0.5},
+                }
+            }
+            clients = _resolve_llm_clients(config)
+
+        # Should have inferred anthropic for claude, openai for gpt
+        assert mock_ac.call_count == 2  # generator + refinement
+        assert mock_oc.call_count == 1  # reviewer
+
+    def test_returns_budgeted_clients_v2_4(self, monkeypatch):
+        """V2-4: All resolved clients are wrapped in BudgetedLLMClient."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from skuld.llm_client import BudgetedLLMClient
+        from unittest.mock import patch
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient"):
+            config = {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "claude-haiku-4-20250514"}
+            clients = _resolve_llm_clients(config)
+
+        for phase in ("generator", "reviewer", "refinement"):
+            assert isinstance(clients[phase], BudgetedLLMClient), f"{phase} not wrapped in BudgetedLLMClient"
+
+    def test_no_api_key_raises_clear_error(self, monkeypatch):
+        """No API keys set at all → ValueError with actionable message."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+
+        monkeypatch.delenv("SKULD_ANTHROPIC_KEY", raising=False)
+        monkeypatch.delenv("SKULD_OPENAI_KEY", raising=False)
+
+        config = {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"}
+        with pytest.raises(ValueError):
+            _resolve_llm_clients(config)
+
+    def test_model_routing_missing_model_key_raises(self, monkeypatch):
+        """model_routing phase without 'model' key raises ValueError."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        config = {
+            "model_routing": {
+                "generator": {"temperature": 0.7},  # no model key
+                "reviewer": {"model": "gpt-4o"},
+                "refinement": {"model": "claude-sonnet-4-20250514"},
+            }
+        }
+        with pytest.raises(ValueError, match="model_routing.generator.model"):
+            _resolve_llm_clients(config)
+
+    def test_model_routing_non_dict_phase_raises(self, monkeypatch):
+        """model_routing phase that is not a dict raises ValueError."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        config = {
+            "model_routing": {
+                "generator": "claude-sonnet-4",  # string instead of dict
+                "reviewer": {"model": "gpt-4o"},
+                "refinement": {"model": "claude-sonnet-4-20250514"},
+            }
+        }
+        with pytest.raises(ValueError, match="must be a mapping"):
+            _resolve_llm_clients(config)
+
+    def test_model_routing_blank_model_raises(self, monkeypatch):
+        """model_routing phase with blank model raises ValueError."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        config = {
+            "model_routing": {
+                "generator": {"model": "   "},
+                "reviewer": {"model": "gpt-4o"},
+                "refinement": {"model": "claude-sonnet-4-20250514"},
+            }
+        }
+        with pytest.raises(ValueError, match="model_routing.generator.model"):
+            _resolve_llm_clients(config)
+
+    def test_shared_budget_across_phases(self, monkeypatch):
+        """All three phases share a single token budget."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from skuld.llm_client import BudgetedLLMClient
+        from unittest.mock import patch
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient"):
+            config = {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "claude-haiku-4-20250514",
+                "max_tokens_per_run": 10000,
+            }
+            clients = _resolve_llm_clients(config)
+
+        # All three should share the same budget object
+        assert clients["generator"]._budget is clients["reviewer"]._budget
+        assert clients["reviewer"]._budget is clients["refinement"]._budget
+        assert clients["generator"]._budget.max_tokens == 10000
+
+    def test_shared_budget_model_routing(self, monkeypatch):
+        """Advanced model_routing mode also shares budget."""
+        from skuld.end_to_end_flow import _resolve_llm_clients
+        from unittest.mock import patch
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        monkeypatch.setenv("SKULD_OPENAI_KEY", "sk-test")
+
+        with patch("skuld.providers.anthropic_client.AnthropicLLMClient"), \
+             patch("skuld.providers.openai_client.OpenAILLMClient"):
+            config = {
+                "max_tokens_per_run": 20000,
+                "model_routing": {
+                    "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                    "reviewer": {"model": "gpt-4o", "provider": "openai"},
+                    "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+                }
+            }
+            clients = _resolve_llm_clients(config)
+
+        assert clients["generator"]._budget is clients["reviewer"]._budget
+        assert clients["reviewer"]._budget is clients["refinement"]._budget
+        assert clients["generator"]._budget.max_tokens == 20000
 
 
 # ---------------------------------------------------------------------------
@@ -706,22 +967,22 @@ class TestDegradedScenarios:
         # Request integrity: each stage receives the correct prompt type/content
         assert gen_inner.last_request is not None
         assert "expert test case writer specializing in comprehensive test" in gen_inner.last_request.system_prompt
+        assert "## Output Format" in gen_inner.last_request.system_prompt
         assert "<story_context>" in gen_inner.last_request.user_prompt
         assert "<acceptance_criteria>" in gen_inner.last_request.user_prompt
-        assert "## Output Format" in gen_inner.last_request.user_prompt
 
         assert rev_inner.last_request is not None
         assert "adversarial test reviewer" in rev_inner.last_request.system_prompt
+        assert "## Review Instructions" in rev_inner.last_request.system_prompt
         assert "## Generated Test Cases" in rev_inner.last_request.user_prompt
         assert "TC-GEN-001" in rev_inner.last_request.user_prompt
-        assert "## Review Instructions" in rev_inner.last_request.user_prompt
 
         assert ref_inner.last_request is not None
         assert "You are an expert test case writer. You will refine a set of test cases" in ref_inner.last_request.system_prompt
+        assert "## Refinement Instructions" in ref_inner.last_request.system_prompt
         assert "## Original Test Cases" in ref_inner.last_request.user_prompt
         assert "TC-GEN-001" in ref_inner.last_request.user_prompt
         assert "## Review Feedback" in ref_inner.last_request.user_prompt
         assert "flagged_tests" in ref_inner.last_request.user_prompt
         assert "quality_scores" in ref_inner.last_request.user_prompt
-        assert "## Refinement Instructions" in ref_inner.last_request.user_prompt
 

@@ -678,9 +678,9 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 
 | Field | Value |
 |---|---|
-| Phase | Phase 4 COMPLETE — V2 planning next |
-| Last Commit | T17: Usage documentation (PR #2 open against main) |
-| Tests | 516 passing |
+| Phase | V2 — Real LLM Providers (V2-1..V2-4 complete) |
+| Last Change | V2-4: SharedBudget + provider resolution fixes |
+| Tests | 597 passing |
 | Coverage | 96% overall, all modules ≥90% |
 | Blockers | None |
 
@@ -696,10 +696,10 @@ Wire actual LLM providers so users can generate meaningful test cases without `-
 
 | Task | Description |
 |------|-------------|
-| V2-1 | `src/skuld/providers/anthropic_client.py` — AnthropicLLMClient with API key from env |
-| V2-2 | `src/skuld/providers/openai_client.py` — OpenAILLMClient with API key from env |
-| V2-3 | Provider resolution in `_resolve_llm_clients()` — use config to pick provider |
-| V2-4 | All providers wrapped by `BudgetedLLMClient` (truncation + budget enforcement) |
+| V2-1 | `src/skuld/providers/anthropic_client.py` — AnthropicLLMClient with API key from env ✅ |
+| V2-2 | `src/skuld/providers/openai_client.py` — OpenAILLMClient with API key from env ✅ |
+| V2-3 | Provider resolution in `_resolve_llm_clients()` — use config to pick provider ✅ |
+| V2-4 | All providers wrapped by `BudgetedLLMClient` (truncation + budget enforcement) ✅ |
 | V2-5 | Integration tests for truncated generator/reviewer/refinement on real wiring path |
 | V2-6 | API key setup documentation in USAGE-GUIDE.md |
 

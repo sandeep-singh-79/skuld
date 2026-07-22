@@ -58,6 +58,16 @@ _REFINEMENT_SYSTEM = (
 )
 
 
+def _compose_system_prompt(*parts: str) -> str:
+    """Join only stable, non-user-specific system instructions.
+
+    This helper is the guardrail for provider-side prompt caching. Do not pass
+    story text, acceptance criteria, comments, domain context, test case JSON,
+    or review feedback into this helper.
+    """
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -136,23 +146,27 @@ def build_generator_prompt(
     min_edge = config.get("min_edge_case_per_ac", 1)
     parts.append("")
     parts.append(
-        "## Requirements\n"
+        "## Per-Run Constraints\n"
         f"- Generate at least {min_neg} negative test(s) per AC\n"
-        f"- Generate at least {min_edge} edge-case test(s) per AC\n"
-        "- Include functional, negative, and edge-case test types\n"
-        "- Each test must trace to at least one AC via ac_ids"
+        f"- Generate at least {min_edge} edge-case test(s) per AC"
     )
-
-    # Output format injection
     parts.append("")
     parts.append(
-        "## Output Format\n"
-        "Respond with ONLY valid JSON matching this schema:\n"
-        f"```json\n{_TEST_CASE_SCHEMA}\n```"
+        "Generate functional, negative, and edge-case tests. "
+        "Include test_cases entries with ac_ids and expected_result fields."
     )
 
     user_prompt = "\n".join(parts)
-    return GenerationRequest(system_prompt=_GENERATOR_SYSTEM, user_prompt=user_prompt)
+    system_prompt = _compose_system_prompt(
+        _GENERATOR_SYSTEM,
+        "## Requirements\n"
+        "- Include functional, negative, and edge-case test types\n"
+        "- Each test must trace to at least one AC via ac_ids",
+        "## Output Format\n"
+        "Respond with ONLY valid JSON matching this schema:\n"
+        f"```json\n{_TEST_CASE_SCHEMA}\n```",
+    )
+    return GenerationRequest(system_prompt=system_prompt, user_prompt=user_prompt)
 
 
 def build_reviewer_prompt(
@@ -177,19 +191,23 @@ def build_reviewer_prompt(
         "",
         _fence("acceptance_criteria", ac_text),
         "",
+        "Return feedback with flagged_tests, missing_scenarios, quality_scores, "
+        "and suggestions.",
+    ]
+
+    user_prompt = "\n".join(parts)
+    system_prompt = _compose_system_prompt(
+        _REVIEWER_SYSTEM,
         "## Review Instructions\n"
         "1. Check each AC has at least one functional, one negative, and one edge-case test\n"
         "2. Flag tests that are vague, redundant, or untraceable\n"
         "3. Identify missing scenarios not covered by any test\n"
         "4. Score quality on completeness, clarity, and coverage (0.0 to 1.0)",
-        "",
         "## Output Format\n"
         "Respond with ONLY valid JSON matching this schema:\n"
         f"```json\n{_REVIEW_FEEDBACK_SCHEMA}\n```",
-    ]
-
-    user_prompt = "\n".join(parts)
-    return GenerationRequest(system_prompt=_REVIEWER_SYSTEM, user_prompt=user_prompt)
+    )
+    return GenerationRequest(system_prompt=system_prompt, user_prompt=user_prompt)
 
 
 def build_refinement_prompt(
@@ -218,17 +236,20 @@ def build_refinement_prompt(
         "",
         _fence("acceptance_criteria", ac_text),
         "",
+        "Return a refined test_cases list that addresses the review feedback.",
+    ]
+
+    user_prompt = "\n".join(parts)
+    system_prompt = _compose_system_prompt(
+        _REFINEMENT_SYSTEM,
         "## Refinement Instructions\n"
         "1. Retain tests that were NOT flagged in the review\n"
         "2. Fix or replace all flagged tests addressing the reviewer's concerns\n"
         "3. Add new tests for each missing scenario identified\n"
         "4. Implement all actionable suggestions\n"
         "5. Ensure every AC has functional, negative, and edge-case coverage",
-        "",
         "## Output Format\n"
         "Respond with ONLY valid JSON matching this schema:\n"
         f"```json\n{_TEST_CASE_SCHEMA}\n```",
-    ]
-
-    user_prompt = "\n".join(parts)
-    return GenerationRequest(system_prompt=_REFINEMENT_SYSTEM, user_prompt=user_prompt)
+    )
+    return GenerationRequest(system_prompt=system_prompt, user_prompt=user_prompt)

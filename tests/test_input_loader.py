@@ -282,17 +282,21 @@ class TestConfigDefaults:
     def test_provided_config_preserved(self):
         data = {
             **VALID_INPUT,
-            "config": {"generator_model": "gpt", "reviewer_model": "claude", "output_format": "json"},
+            "config": {
+                "generator_model": "gpt-4o",
+                "reviewer_model": "claude-sonnet-4-20250514",
+                "output_format": "json",
+            },
         }
         result = validate_raw(data)
-        assert result["config"]["generator_model"] == "gpt"
-        assert result["config"]["reviewer_model"] == "claude"
+        assert result["config"]["generator_model"] == "gpt-4o"
+        assert result["config"]["reviewer_model"] == "claude-sonnet-4-20250514"
         assert result["config"]["output_format"] == "json"
 
     def test_partial_config_fills_missing(self):
-        data = {**VALID_INPUT, "config": {"generator_model": "ollama"}}
+        data = {**VALID_INPUT, "config": {"generator_model": "claude-haiku-4-20250514"}}
         result = validate_raw(data)
-        assert result["config"]["generator_model"] == "ollama"
+        assert result["config"]["generator_model"] == "claude-haiku-4-20250514"
         assert result["config"]["reviewer_model"] == "gpt-4o"  # default
 
     def test_explicit_null_config_gets_defaults(self):
@@ -322,6 +326,32 @@ class TestProviderConfigValidation:
         assert config["refinement_temperature"] == 0.5
         assert config["max_tokens"] == 8192
         assert config["max_tokens_per_run"] == 64000
+
+    @pytest.mark.parametrize(
+        ("field_name", "value", "expected"),
+        [
+            ("generator_model", 123, "generator_model must be a non-empty string"),
+            ("reviewer_model", False, "reviewer_model must be a non-empty string"),
+            ("generator_model", "   ", "generator_model must be a non-empty string"),
+            (
+                "generator_model",
+                "llama-3-unknown",
+                "Cannot determine provider for model 'llama-3-unknown'",
+            ),
+        ],
+    )
+    def test_simple_mode_model_validation_raises(self, field_name, value, expected):
+        data = {
+            **VALID_INPUT,
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "gpt-4o",
+            },
+        }
+        data["config"][field_name] = value
+
+        with pytest.raises(InputValidationError, match=expected):
+            validate_raw(data)
 
     def test_invalid_top_level_temperature_raises(self):
         data = {
@@ -629,7 +659,10 @@ class TestRealWorldEdgeCases:
         """Using same model for both defeats adversarial purpose."""
         data = {
             **VALID_INPUT,
-            "config": {"generator_model": "claude", "reviewer_model": "claude"},
+            "config": {
+                "generator_model": "claude-sonnet-4-20250514",
+                "reviewer_model": "claude-sonnet-4-20250514",
+            },
         }
         result = validate_raw(data)
         assert any("same model" in w.lower() for w in result.get("_warnings", []))

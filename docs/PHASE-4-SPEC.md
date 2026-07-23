@@ -97,7 +97,7 @@ class OpenAILLMClient:
 **API key handling:**
 - Environment variables: `SKULD_ANTHROPIC_KEY`, `SKULD_OPENAI_KEY`
 - No keys in code, config files, or logs
-- Missing key → clear error: `"SKULD_ANTHROPIC_KEY not set. Use --dry-run for testing without API keys."`
+- Missing key → clear error naming the required env var(s), e.g. `"API key not configured. Missing SKULD_ANTHROPIC_KEY and SKULD_OPENAI_KEY. Set the required environment variable(s) or use --dry-run."`
 
 ### Error Handling
 
@@ -107,7 +107,9 @@ class OpenAILLMClient:
 | `GenerationError` / `ReviewParseError` | `EXIT_VALIDATION_ERROR` + error message |
 | `TokenBudgetExceeded` | `EXIT_VALIDATION_ERROR` + "Token budget exceeded" |
 | Self-validation failure | `EXIT_VALIDATION_ERROR` + validation errors |
-| Missing API key (and not `use_fake_llm`) | `EXIT_INPUT_ERROR` + "API key not configured" |
+| Missing API key (and not `use_fake_llm`) | `EXIT_PROVIDER_ERROR` + missing required env var(s) |
+| Missing provider SDK package | `EXIT_PROVIDER_ERROR` + install hint |
+| `ProviderAPIError` (auth, rate-limit, timeout) | `EXIT_PROVIDER_ERROR` + provider message |
 | Success | `EXIT_OK` + rendered output |
 
 ### Warnings (non-fatal, populated in FlowResult.warnings)

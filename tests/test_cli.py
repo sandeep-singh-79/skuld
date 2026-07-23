@@ -192,7 +192,7 @@ class TestBenchmark:
             "acceptance_criteria": [
                 {"id": "AC-1", "description": "Login works"},
             ],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         input_file = tmp_path / "input.yaml"
         input_file.write_text(yaml.dump(input_data), encoding="utf-8")
@@ -239,7 +239,7 @@ class TestCLIGeneral:
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.3.0" in result.output
 
     def test_rtm_path_traversal_rejected(self, runner, valid_input_file, tmp_path):
         """Path traversal in --rtm-file should be rejected."""
@@ -321,7 +321,7 @@ class TestBenchmarkAssertionTypes:
         input_data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         input_f = str(tmp_path / "in.yaml")
         Path(input_f).write_text(yaml.dump(input_data), encoding="utf-8")
@@ -362,7 +362,10 @@ class TestGenerateWarnings:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "same", "reviewer_model": "same"},
+            "config": {
+                "generator_model": "gpt-4o",
+                "reviewer_model": "gpt-4o",
+            },
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -508,7 +511,7 @@ class TestAdversarialHardening:
         input_data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         input_f = str(tmp_path / "in.yaml")
         Path(input_f).write_text(yaml.dump(input_data), encoding="utf-8")
@@ -528,7 +531,7 @@ class TestAdversarialHardening:
         input_data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         input_f = str(tmp_path / "in.yaml")
         Path(input_f).write_text(yaml.dump(input_data), encoding="utf-8")
@@ -550,7 +553,7 @@ class TestBenchmarkSpecFormat:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -630,7 +633,7 @@ class TestBenchmarkSpecFormatValidation:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -699,7 +702,7 @@ class TestBenchmarkValueCoercion:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -763,7 +766,7 @@ class TestBenchmarkAssertionsFieldNotList:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -832,7 +835,7 @@ class TestBenchmarkAssertionSchemaValidation:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -906,7 +909,7 @@ class TestRound5Fixes:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")
@@ -989,7 +992,7 @@ class TestRound6Fixes:
         data = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "D"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         f = str(tmp_path / "in.yaml")
         Path(f).write_text(yaml.dump(data), encoding="utf-8")

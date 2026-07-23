@@ -77,8 +77,11 @@ For full command reference, worked examples, and input/output formats see:
 
 ## Release Status
 
-- Current version: **0.2.0**
-- Real LLM providers (Anthropic, OpenAI) are wired and ready.
+- Current version: **0.3.0**
+- Real LLM providers (Anthropic, OpenAI) are wired with automatic retry on transient failures.
+- Retry logic: exponential backoff + jitter for rate-limit, timeout, connection, and server errors.
+- Provider failures produce controlled exit code 3 (not tracebacks).
+- Prompt injection guardrails validated with 23 adversarial test scenarios.
 - Install provider extras: `pip install -e ".[anthropic]"` or `pip install -e ".[openai]"`
 - Default config requires both `SKULD_ANTHROPIC_KEY` and `SKULD_OPENAI_KEY`
 - Single-provider runs are supported when your input config routes every phase to that provider

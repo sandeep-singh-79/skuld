@@ -274,6 +274,24 @@ class TestPipelineFeatures:
         assert result.exit_code == EXIT_OK
         assert any("same" in w.lower() and "adversarial" in w.lower() for w in result.warnings)
 
+    def test_same_model_warning_not_duplicated_with_routing(self):
+        """When model_routing is present, only one same-model warning fires."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        data = _make_raw_yaml_input()
+        # Set both simple-mode AND model_routing to same model
+        data["config"]["generator_model"] = "claude-sonnet-4-20250514"
+        data["config"]["reviewer_model"] = "claude-sonnet-4-20250514"
+        data["config"]["model_routing"] = {
+            "generator": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+            "reviewer": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+            "refinement": {"model": "claude-sonnet-4-20250514", "provider": "anthropic"},
+        }
+        result = run_pipeline_from_dict(data, use_fake_llm=True)
+        assert result.exit_code == EXIT_OK
+        same_model_warnings = [w for w in result.warnings if "adversarial" in w.lower() and "same" in w.lower()]
+        assert len(same_model_warnings) == 1, f"Expected 1 same-model warning, got {len(same_model_warnings)}: {same_model_warnings}"
+
     def test_rtm_save_oserror_produces_warning(self, tmp_path):
         """When RTM save fails with OSError, pipeline still returns EXIT_OK with warning."""
         from skuld.end_to_end_flow import run_pipeline_from_dict
@@ -320,16 +338,58 @@ class TestPipelineApiKeyErrors:
     """Tests for API key validation."""
 
     def test_missing_api_key_raises(self, monkeypatch):
-        """use_fake_llm=False with no env keys → EXIT_INPUT_ERROR."""
+        """use_fake_llm=False with no env keys → EXIT_PROVIDER_ERROR."""
         from skuld.end_to_end_flow import run_pipeline_from_dict
+        from skuld.models import EXIT_PROVIDER_ERROR
 
         monkeypatch.delenv("SKULD_ANTHROPIC_KEY", raising=False)
         monkeypatch.delenv("SKULD_OPENAI_KEY", raising=False)
 
         data = _make_raw_yaml_input()
         result = run_pipeline_from_dict(data, use_fake_llm=False)
-        assert result.exit_code == EXIT_INPUT_ERROR
+        assert result.exit_code == EXIT_PROVIDER_ERROR
         assert "API key not configured" in result.message
+        assert "SKULD_ANTHROPIC_KEY" in result.message
+        assert "SKULD_OPENAI_KEY" in result.message
+
+    def test_unknown_model_returns_input_error(self, monkeypatch):
+        """Unknown model in simple mode → EXIT_INPUT_ERROR (config error, not env)."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        monkeypatch.setenv("SKULD_ANTHROPIC_KEY", "sk-test")
+        monkeypatch.setenv("SKULD_OPENAI_KEY", "sk-test")
+
+        data = _make_raw_yaml_input()
+        data["config"]["generator_model"] = "llama-3-unknown"
+        result = run_pipeline_from_dict(data, use_fake_llm=False)
+        assert result.exit_code == EXIT_INPUT_ERROR
+        assert "Cannot determine provider" in result.message
+
+    def test_unknown_model_returns_input_error_even_without_keys(self, monkeypatch):
+        """Unknown model without keys → still EXIT_INPUT_ERROR (config before env)."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        monkeypatch.delenv("SKULD_ANTHROPIC_KEY", raising=False)
+        monkeypatch.delenv("SKULD_OPENAI_KEY", raising=False)
+
+        data = _make_raw_yaml_input()
+        data["config"]["generator_model"] = "llama-3-unknown"
+        result = run_pipeline_from_dict(data, use_fake_llm=False)
+        assert result.exit_code == EXIT_INPUT_ERROR
+        assert "Cannot determine provider" in result.message
+
+    def test_non_string_model_returns_input_error(self, monkeypatch):
+        """Non-string simple-mode model → EXIT_INPUT_ERROR, not traceback."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+
+        monkeypatch.delenv("SKULD_ANTHROPIC_KEY", raising=False)
+        monkeypatch.delenv("SKULD_OPENAI_KEY", raising=False)
+
+        data = _make_raw_yaml_input()
+        data["config"]["generator_model"] = 123
+        result = run_pipeline_from_dict(data, use_fake_llm=False)
+        assert result.exit_code == EXIT_INPUT_ERROR
+        assert "generator_model must be a non-empty string" in result.message
 
     def test_real_provider_resolution_attempted(self, monkeypatch):
         """use_fake_llm=False with API key set → attempts real provider creation."""
@@ -822,7 +882,7 @@ class TestDegradedScenarios:
                 {"id": f"AC-{i}", "description": f"AC {i}", "criticality": "medium"}
                 for i in range(1, 4)
             ],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
 
     def _fake_review(self) -> str:
@@ -970,7 +1030,7 @@ class TestDegradedScenarios:
                 {"id": f"AC-{i}", "description": f"AC {i}", "criticality": "medium"}
                 for i in range(1, 5)
             ],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
 
         def _tc(id_, ac, tt):
@@ -1038,7 +1098,7 @@ class TestDegradedScenarios:
         single_ac_input = {
             "story": {"id": "S-1", "title": "T", "description": "D"},
             "acceptance_criteria": [{"id": "AC-1", "description": "AC 1", "criticality": "medium"}],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
 
         with patch(

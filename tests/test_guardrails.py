@@ -69,7 +69,7 @@ class TestArchitectureGuardrails:
                 {"id": f"AC-{i}", "description": f"AC {i}", "criticality": "medium"}
                 for i in range(31)
             ],
-            "config": {"generator_model": "a", "reviewer_model": "b"},
+            "config": {"generator_model": "claude-sonnet-4-20250514", "reviewer_model": "gpt-4o"},
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete_on_close=False, encoding="utf-8") as f:
             yaml.dump(data, f)

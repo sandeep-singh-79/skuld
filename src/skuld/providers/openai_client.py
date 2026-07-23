@@ -52,21 +52,30 @@ class OpenAILLMClient(BaseLLMProvider):
             finish_reason,
         )
 
-    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str]]:
+    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str, bool]]:
         return [
             (
                 (sdk.AuthenticationError,),
                 "OpenAI API key is invalid or expired. "
                 "Verify SKULD_OPENAI_KEY is correct.",
+                False,
             ),
             (
                 (sdk.RateLimitError,),
                 "OpenAI rate limit exceeded. Wait a moment and retry, "
                 "or use a smaller model.",
+                True,
             ),
             (
                 (sdk.APITimeoutError, sdk.APIConnectionError),
                 "Could not connect to OpenAI API. "
                 "Check your network connection and try again.",
+                True,
+            ),
+            (
+                (sdk.InternalServerError,),
+                "OpenAI server error (internal). "
+                "Try again later.",
+                True,
             ),
         ]

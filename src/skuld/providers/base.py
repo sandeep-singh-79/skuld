@@ -10,6 +10,10 @@ from skuld.models import GenerationRequest, GenerationResponse
 class ProviderAPIError(RuntimeError):
     """Base error for all LLM provider API failures."""
 
+    def __init__(self, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
+
 
 class BaseLLMProvider(ABC):
     """Template Method base class for LLM providers.
@@ -71,9 +75,9 @@ class BaseLLMProvider(ABC):
                 f"Install it with: {self._INSTALL_HINT}"
             ) from None
 
-    def _make_error(self, message: str) -> ProviderAPIError:
+    def _make_error(self, message: str, *, retryable: bool = False) -> ProviderAPIError:
         """Create a provider-specific error instance."""
-        return self._ERROR_CLASS(message)
+        return self._ERROR_CLASS(message, retryable=retryable)
 
     @abstractmethod
     def _create_sdk_client(self, sdk_module, api_key: str):
@@ -92,8 +96,8 @@ class BaseLLMProvider(ABC):
         """
 
     @abstractmethod
-    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str]]:
-        """Return list of (exception_types_tuple, user_message) for error wrapping.
+    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str, bool]]:
+        """Return list of (exception_types_tuple, user_message, retryable) for error wrapping.
 
         Called with the imported SDK module so exception classes are available.
         """
@@ -124,7 +128,7 @@ class BaseLLMProvider(ABC):
         except ProviderAPIError:
             raise
         except Exception as exc:
-            for exc_types, message in self._sdk_error_map(sdk):
+            for exc_types, message, retryable in self._sdk_error_map(sdk):
                 if isinstance(exc, exc_types):
-                    raise self._make_error(message) from exc
+                    raise self._make_error(message, retryable=retryable) from exc
             raise self._make_error(str(exc)) from exc

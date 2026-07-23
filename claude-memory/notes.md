@@ -4,6 +4,48 @@ Temporary working notes, open questions, in-flight thinking.
 
 ---
 
+## Workflow Discipline Note (2026-07-23)
+
+When invoking subagents for the orchestrated workflow:
+- **Implementation subagent:** Use `model: "Claude Sonnet 4.5 (copilot)"` and pass `tdd-implementation.prompt.md` content in the prompt
+- **Adversarial review subagent:** Use `agentName: "adversarial-reviewer"`, `model: "GPT-5.4 (copilot)"` and pass `adversarial-review.prompt.md` content in the prompt
+
+---
+
+## D-V2-1-1 Deferred Findings (2026-07-23)
+
+### RESOLVED (2026-07-23)
+
+- HIGH: Provider API failures now caught at all 3 LLM call stages → returns `FlowResult(exit_code=EXIT_PROVIDER_ERROR=3, ...)`.
+- MEDIUM: Budget contract documented as "successful-response-only" in `SharedBudget` docstring + locking test added.
+
+### Deferred to V2-9 (exit code docs)
+
+- MEDIUM: Exit-code documentation (USAGE-GUIDE.md, PHASE-4-SPEC.md) still lists only codes 0/1/2. Code 3 (`EXIT_PROVIDER_ERROR`) is not yet documented.
+  - Rationale: V2-9 work item explicitly covers "Exit code 3 for environment errors" — docs will be updated as part of that item's deliverable.
+
+### D-V2-1-1-F3 (LOW) — Catch-all str(exc) may leak SDK internals
+- `BaseLLMProvider.generate()` passes `str(exc)` verbatim in the catch-all branch
+- Developer-facing, original chained via `from exc`, low risk
+- Fix later if user-facing CLI surfaces raw error messages
+
+### D-V2-1-1-F4 (MEDIUM) — Retry attempts not budget-counted
+- `BudgetedLLMClient(RetryingLLMClient(provider))` means failed retry attempts don't increment SharedBudget
+- Intentional trade-off: failed retries (rate-limit, 5xx) don't consume meaningful provider tokens
+- SDK exceptions lack usage metadata — adding it requires interface changes
+- Contract: budget counts only successful responses. Acceptable for v0.3.0.
+- Revisit if real-provider testing (V2-5) reveals meaningful token consumption on retried failures.
+
+### D-V2-12-1 (MEDIUM) — Markdown code-fence breakout in reviewer/refinement prompts
+- `test_cases_json` and `review_feedback_json` are interpolated into Markdown ```json ... ``` blocks without escaping triple backticks
+- Pre-existing design: not introduced by V2-12
+- Attack vector is indirect: requires LLM-generated output containing adversarial triple backticks (generator would need to be compromised)
+- User-supplied content is protected by XML `_fence()` mechanism (comprehensively tested by V2-12)
+- Fix: escape triple backticks in JSON payloads before interpolation, or switch to XML fence for those fields
+- Target: v0.4.0 or when JSON schema validation (D-V2-1-2) is implemented
+
+---
+
 ## Review Findings After V2-1..V2-4 (2026-07-22)
 
 ### Current findings

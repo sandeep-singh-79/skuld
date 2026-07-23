@@ -75,6 +75,8 @@ def _coerce_int(value: Any, field_name: str) -> int:
 
 
 def _known_provider_from_model(model_name: str) -> str | None:
+    if not isinstance(model_name, str):
+        return None
     if model_name.startswith("claude-"):
         return "anthropic"
     if model_name.startswith(("gpt-", "o1-", "o3-", "o4-")):
@@ -213,6 +215,17 @@ def _validate_config(config: dict, warnings: list[str]) -> None:
         )
 
     routing = config.get("model_routing")
+    if routing is None:
+        for field_name in ("generator_model", "reviewer_model"):
+            model_name = config.get(field_name)
+            if not isinstance(model_name, str) or not model_name.strip():
+                raise InputValidationError(
+                    f"{field_name} must be a non-empty string"
+                )
+            model_name = model_name.strip()
+            config[field_name] = model_name
+            _infer_provider_from_model(model_name)
+
     if routing is not None:
         if not isinstance(routing, dict):
             raise InputValidationError(
@@ -283,8 +296,7 @@ def _validate_config(config: dict, warnings: list[str]) -> None:
                 f"model_routing: generator and reviewer use the same model ('{gen_model}') "
                 "— this defeats the adversarial review purpose"
             )
-
-    if config.get("generator_model") == config.get("reviewer_model"):
+    elif config.get("generator_model") and config.get("generator_model") == config.get("reviewer_model"):
         warnings.append(
             f"generator_model and reviewer_model are the same model "
             f"('{config['generator_model']}') — this defeats the adversarial review purpose"

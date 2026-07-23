@@ -148,6 +148,11 @@ def _fake_refined_cases_json(story_id: str, ac_ids: list[str]) -> str:
 
 def _infer_provider(model_name: str) -> str:
     """Infer provider from model name prefix."""
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValueError(
+            f"Model name must be a non-empty string, got {model_name!r}. "
+            "Use model_routing config with explicit provider."
+        )
     if model_name.startswith("claude-"):
         return "anthropic"
     if model_name.startswith(("gpt-", "o1-", "o3-", "o4-")):
@@ -180,21 +185,24 @@ def _resolve_llm_clients(config: dict) -> dict:
 
     Each client is wrapped in BudgetedLLMClient.
     """
-    # Check API keys
-    anthropic_key = os.environ.get("SKULD_ANTHROPIC_KEY")
-    openai_key = os.environ.get("SKULD_OPENAI_KEY")
-    if not anthropic_key and not openai_key:
-        raise ValueError(
-            "API key not configured. Set SKULD_ANTHROPIC_KEY or SKULD_OPENAI_KEY, or use --dry-run."
-        )
-
     model_routing = config.get("model_routing")
+    required_providers: set[str] = set()
 
-    if model_routing:
-        # Advanced mode: per-phase config
-        budget = config.get("max_tokens_per_run", 32000)
-        shared = SharedBudget(budget)
-        clients = {}
+    # Validate model/provider config before checking keys (config errors before env errors)
+    if not model_routing:
+        gen_model = config.get("generator_model", "claude-sonnet-4-20250514")
+        rev_model = config.get("reviewer_model", "gpt-4o")
+        for field_name, model_name in (
+            ("generator_model", gen_model),
+            ("reviewer_model", rev_model),
+        ):
+            if not isinstance(model_name, str) or not model_name.strip():
+                raise ValueError(f"{field_name} must be a non-empty string")
+        # These raise ValueError("Cannot determine provider...") for unknown models
+        required_providers.add(_infer_provider(gen_model))
+        required_providers.add(_infer_provider(rev_model))
+        required_providers.add(_infer_provider(gen_model))
+    else:
         for phase in ("generator", "reviewer", "refinement"):
             phase_config = model_routing.get(phase)
             if not phase_config:
@@ -208,6 +216,35 @@ def _resolve_llm_clients(config: dict) -> dict:
                 raise ValueError(
                     f"model_routing.{phase}.model is required and must be a non-empty string."
                 )
+            model = model.strip()
+            provider = phase_config.get("provider") or _infer_provider(model)
+            required_providers.add(provider)
+
+    # Check API keys (env errors)
+    anthropic_key = os.environ.get("SKULD_ANTHROPIC_KEY")
+    openai_key = os.environ.get("SKULD_OPENAI_KEY")
+    missing_env_vars: list[str] = []
+    if "anthropic" in required_providers and not anthropic_key:
+        missing_env_vars.append("SKULD_ANTHROPIC_KEY")
+    if "openai" in required_providers and not openai_key:
+        missing_env_vars.append("SKULD_OPENAI_KEY")
+    if missing_env_vars:
+        if len(missing_env_vars) == 1:
+            missing_desc = missing_env_vars[0]
+        else:
+            missing_desc = ", ".join(missing_env_vars[:-1]) + f" and {missing_env_vars[-1]}"
+        raise ValueError(
+            f"API key not configured. Missing {missing_desc}. Set the required environment variable(s) or use --dry-run."
+        )
+
+    if model_routing:
+        # Advanced mode: per-phase config
+        budget = config.get("max_tokens_per_run", 32000)
+        shared = SharedBudget(budget)
+        clients = {}
+        for phase in ("generator", "reviewer", "refinement"):
+            phase_config = model_routing.get(phase)
+            model = phase_config.get("model")
             model = model.strip()
             provider = phase_config.get("provider") or _infer_provider(model)
             temperature = phase_config.get("temperature", 0.7)
@@ -294,24 +331,8 @@ def _run_from_package(
         # Update normalized so downstream (generate_tests) sees filtered
         normalized = {**normalized, "comments": comments}
 
-    # 2b. Same-model warning
+    # Warnings from normalization
     warnings = list(normalized.get("_warnings", []))
-    if config.get("generator_model") == config.get("reviewer_model"):
-        warnings.append(
-            f"generator_model and reviewer_model are the same ('{config['generator_model']}') "
-            "— adversarial review effectiveness reduced"
-        )
-    model_routing = config.get("model_routing")
-    if model_routing:
-        gen_routing = model_routing.get("generator", {})
-        rev_routing = model_routing.get("reviewer", {})
-        gen_model = gen_routing.get("model", "") if isinstance(gen_routing, dict) else ""
-        rev_model = rev_routing.get("model", "") if isinstance(rev_routing, dict) else ""
-        if gen_model and rev_model and gen_model == rev_model:
-            warnings.append(
-                f"model_routing: generator and reviewer use the same model ('{gen_model}') "
-                "— adversarial review effectiveness reduced"
-            )
 
     # 3. Resolve LLM clients
     if use_fake_llm:
@@ -320,7 +341,16 @@ def _run_from_package(
         try:
             clients = _resolve_llm_clients(config)
         except ValueError as exc:
-            return FlowResult(exit_code=EXIT_INPUT_ERROR, message=str(exc), output_path=None)
+            msg = str(exc)
+            if (
+                "Cannot determine provider" in msg
+                or "Unknown provider" in msg
+                or "Model name must be a non-empty string" in msg
+                or "generator_model must be a non-empty string" in msg
+                or "reviewer_model must be a non-empty string" in msg
+            ):
+                return FlowResult(exit_code=EXIT_INPUT_ERROR, message=msg, output_path=None)
+            return FlowResult(exit_code=EXIT_PROVIDER_ERROR, message=msg, output_path=None)
 
     # 4. Generate (Pass 1)
     logger.info("Stage 1/3: Generating test cases...")

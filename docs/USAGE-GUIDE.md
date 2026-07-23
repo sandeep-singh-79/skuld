@@ -568,8 +568,9 @@ skuld benchmark INPUT_FILE ASSERTIONS_FILE [OPTIONS]
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Benchmark assertions failed against output |
-| 2 | Malformed input, validation error, or pipeline error |
+| Code | Constant | `skuld generate` | `skuld benchmark` |
+|------|----------|-------------------|-------------------|
+| 0 | `EXIT_OK` | Success | Success |
+| 1 | `EXIT_VALIDATION_ERROR` | Pipeline validation failure (parse, truncation, scoring) | Benchmark assertions failed, or propagated pipeline validation failure |
+| 2 | `EXIT_INPUT_ERROR` | Malformed input, unknown model, or config error | Malformed input |
+| 3 | `EXIT_PROVIDER_ERROR` | Provider/environment error (missing API key, missing SDK, provider failure) | Propagated from pipeline (when `--no-dry-run`) |

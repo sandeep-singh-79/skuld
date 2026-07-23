@@ -31,7 +31,12 @@ class LLMClient(Protocol):
 
 
 class SharedBudget:
-    """Mutable token counter shared across multiple BudgetedLLMClient instances."""
+    """Mutable token counter shared across multiple BudgetedLLMClient instances.
+
+    Budget tracks only successful responses. Failed attempts (e.g. retried
+    provider errors) do not consume budget because provider exceptions do
+    not carry reliable token usage metadata.
+    """
 
     def __init__(self, max_tokens: int = 32_000):
         self.max_tokens = max_tokens

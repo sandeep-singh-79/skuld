@@ -355,6 +355,97 @@ class TestPipelineApiKeyErrors:
 
 
 # ---------------------------------------------------------------------------
+# Tests: TestProviderErrorHandling (D-V2-1-1)
+# ---------------------------------------------------------------------------
+
+class TestProviderErrorHandling:
+    """D-V2-1-1: Provider API errors produce controlled FlowResult, not tracebacks."""
+
+    def test_generate_stage_provider_error_returns_exit_3(self):
+        """ProviderAPIError during generation → EXIT_PROVIDER_ERROR."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+        from skuld.models import EXIT_PROVIDER_ERROR
+        from skuld.providers.base import ProviderAPIError
+        from unittest.mock import patch
+
+        from skuld.llm_client import FakeLLMClient
+
+        data = _make_raw_yaml_input()
+        mock_client = FakeLLMClient(error=ProviderAPIError("Anthropic rate limit exceeded", retryable=True))
+
+        with patch("skuld.end_to_end_flow._prepare_fake_clients") as mock_prep:
+            mock_prep.return_value = {"generator": mock_client, "reviewer": mock_client, "refinement": mock_client}
+            result = run_pipeline_from_dict(data, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_PROVIDER_ERROR
+        assert "rate limit" in result.message.lower()
+
+    def test_review_stage_provider_error_returns_exit_3(self):
+        """ProviderAPIError during review → EXIT_PROVIDER_ERROR."""
+        from skuld.end_to_end_flow import _fake_test_cases_json, run_pipeline_from_dict
+        from skuld.models import EXIT_PROVIDER_ERROR
+        from skuld.providers.base import ProviderAPIError
+        from unittest.mock import patch
+
+        from skuld.llm_client import FakeLLMClient
+
+        data = _make_raw_yaml_input()
+        gen_client = FakeLLMClient(response_content=_fake_test_cases_json("STORY-1", ["AC-1", "AC-2"]))
+        rev_client = FakeLLMClient(error=ProviderAPIError("OpenAI auth failed", retryable=False))
+        ref_client = FakeLLMClient()
+
+        with patch("skuld.end_to_end_flow._prepare_fake_clients") as mock_prep:
+            mock_prep.return_value = {"generator": gen_client, "reviewer": rev_client, "refinement": ref_client}
+            result = run_pipeline_from_dict(data, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_PROVIDER_ERROR
+        assert "auth failed" in result.message.lower()
+
+    def test_refine_stage_provider_error_returns_exit_3(self):
+        """ProviderAPIError during refinement → EXIT_PROVIDER_ERROR."""
+        from skuld.end_to_end_flow import _fake_review_feedback_json, _fake_test_cases_json, run_pipeline_from_dict
+        from skuld.models import EXIT_PROVIDER_ERROR
+        from skuld.providers.base import ProviderAPIError
+        from unittest.mock import patch
+
+        from skuld.llm_client import FakeLLMClient
+
+        data = _make_raw_yaml_input()
+        gen_client = FakeLLMClient(response_content=_fake_test_cases_json("STORY-1", ["AC-1", "AC-2"]))
+        rev_client = FakeLLMClient(response_content=_fake_review_feedback_json())
+        ref_client = FakeLLMClient(error=ProviderAPIError("Connection timeout", retryable=True))
+
+        with patch("skuld.end_to_end_flow._prepare_fake_clients") as mock_prep:
+            mock_prep.return_value = {"generator": gen_client, "reviewer": rev_client, "refinement": ref_client}
+            result = run_pipeline_from_dict(data, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_PROVIDER_ERROR
+        assert "timeout" in result.message.lower()
+
+    def test_permanent_auth_error_returns_exit_3(self):
+        """Non-retryable ProviderAPIError (auth) → EXIT_PROVIDER_ERROR with clear message."""
+        from skuld.end_to_end_flow import run_pipeline_from_dict
+        from skuld.models import EXIT_PROVIDER_ERROR
+        from skuld.providers.base import ProviderAPIError
+        from unittest.mock import patch
+
+        from skuld.llm_client import FakeLLMClient
+
+        data = _make_raw_yaml_input()
+        mock_client = FakeLLMClient(error=ProviderAPIError(
+            "Anthropic API key is invalid or expired. Verify SKULD_ANTHROPIC_KEY is correct.",
+            retryable=False,
+        ))
+
+        with patch("skuld.end_to_end_flow._prepare_fake_clients") as mock_prep:
+            mock_prep.return_value = {"generator": mock_client, "reviewer": mock_client, "refinement": mock_client}
+            result = run_pipeline_from_dict(data, use_fake_llm=True)
+
+        assert result.exit_code == EXIT_PROVIDER_ERROR
+        assert "SKULD_ANTHROPIC_KEY" in result.message
+
+
+# ---------------------------------------------------------------------------
 # Tests: TestProviderResolution (V2-3, V2-4)
 # ---------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ from typing import Any
 EXIT_OK: int = 0
 EXIT_VALIDATION_ERROR: int = 1
 EXIT_INPUT_ERROR: int = 2
+EXIT_PROVIDER_ERROR: int = 3
 
 # ---------------------------------------------------------------------------
 # Core data structures (reused pattern from IRO)

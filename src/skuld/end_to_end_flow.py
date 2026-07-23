@@ -17,13 +17,16 @@ from skuld.comment_filter import filter_comments
 from skuld.confidence_scorer import compute_confidence_from_detailed
 from skuld.input_loader import InputValidationError, load_input, validate_raw
 from skuld.llm_client import BudgetedLLMClient, FakeLLMClient, SharedBudget, TokenBudgetExceeded, TruncatedResponseError
+from skuld.retry import RetryingLLMClient
 from skuld.models import (
     EXIT_INPUT_ERROR,
     EXIT_OK,
+    EXIT_PROVIDER_ERROR,
     EXIT_VALIDATION_ERROR,
     AcceptanceCriterion,
     FlowResult,
 )
+from skuld.providers.base import ProviderAPIError
 from skuld.output_validator import validate_output
 from skuld.renderer import render_report
 from skuld.rtm_builder import build_rtm, rtm_to_matrix
@@ -210,7 +213,7 @@ def _resolve_llm_clients(config: dict) -> dict:
             temperature = phase_config.get("temperature", 0.7)
             max_tokens = phase_config.get("max_tokens", 4096)
             inner = _create_provider_client(provider, model, temperature, max_tokens)
-            clients[phase] = BudgetedLLMClient(inner, shared_budget=shared)
+            clients[phase] = BudgetedLLMClient(RetryingLLMClient(inner), shared_budget=shared)
         return clients
     else:
         # Simple mode: top-level generator_model / reviewer_model
@@ -234,9 +237,9 @@ def _resolve_llm_clients(config: dict) -> dict:
         budget = config.get("max_tokens_per_run", 32000)
         shared = SharedBudget(budget)
         return {
-            "generator": BudgetedLLMClient(gen_client, shared_budget=shared),
-            "reviewer": BudgetedLLMClient(rev_client, shared_budget=shared),
-            "refinement": BudgetedLLMClient(ref_client, shared_budget=shared),
+            "generator": BudgetedLLMClient(RetryingLLMClient(gen_client), shared_budget=shared),
+            "reviewer": BudgetedLLMClient(RetryingLLMClient(rev_client), shared_budget=shared),
+            "refinement": BudgetedLLMClient(RetryingLLMClient(ref_client), shared_budget=shared),
         }
 
 
@@ -325,6 +328,8 @@ def _run_from_package(
         test_cases = generate_tests(normalized, clients["generator"])
     except (GenerationError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
+    except ProviderAPIError as exc:
+        return FlowResult(exit_code=EXIT_PROVIDER_ERROR, message=str(exc), output_path=None)
 
     # 5. Review
     logger.info("Stage 2/3: Adversarial review...")
@@ -340,6 +345,8 @@ def _run_from_package(
         feedback = review_tests(test_cases, ac_objects, clients["reviewer"])
     except (ReviewParseError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
+    except ProviderAPIError as exc:
+        return FlowResult(exit_code=EXIT_PROVIDER_ERROR, message=str(exc), output_path=None)
 
     # 6. Refine (Pass 2)
     logger.info("Stage 3/3: Refining test cases...")
@@ -347,6 +354,8 @@ def _run_from_package(
         refined = refine_tests(test_cases, feedback, normalized, clients["refinement"])
     except (GenerationError, TokenBudgetExceeded, TruncatedResponseError) as exc:
         return FlowResult(exit_code=EXIT_VALIDATION_ERROR, message=str(exc), output_path=None)
+    except ProviderAPIError as exc:
+        return FlowResult(exit_code=EXIT_PROVIDER_ERROR, message=str(exc), output_path=None)
 
     # 7. Map review flags
     flagged_tests = map_review_flags(refined, feedback)

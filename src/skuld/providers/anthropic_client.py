@@ -71,21 +71,30 @@ class AnthropicLLMClient(BaseLLMProvider):
             finish_reason,
         )
 
-    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str]]:
+    def _sdk_error_map(self, sdk) -> list[tuple[tuple, str, bool]]:
         return [
             (
                 (sdk.AuthenticationError,),
                 "Anthropic API key is invalid or expired. "
                 "Verify SKULD_ANTHROPIC_KEY is correct.",
+                False,
             ),
             (
                 (sdk.RateLimitError,),
                 "Anthropic rate limit exceeded. Wait a moment and retry, "
                 "or use a smaller model (e.g. claude-haiku-4-20250514).",
+                True,
             ),
             (
                 (sdk.APITimeoutError, sdk.APIConnectionError),
                 "Could not connect to Anthropic API. "
                 "Check your network connection and try again.",
+                True,
+            ),
+            (
+                (sdk.InternalServerError, sdk.OverloadedError),
+                "Anthropic server error (overloaded or internal). "
+                "Try again later.",
+                True,
             ),
         ]

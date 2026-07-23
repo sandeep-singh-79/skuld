@@ -52,14 +52,42 @@ Read these files before proceeding.
   - Red: write the failing test first.
   - Green: write the simplest code that passes. No premature abstraction.
   - Refactor: remove duplication, improve clarity, introduce design patterns only when the existing code complexity warrants them. Patterns are a refactoring tool, not a starting point.
-- **After green, before commit: perform the full 6-step completion workflow** (see `claude-memory/insights.md` — "Per-Task Completion Workflow"):
-  1. TDD (red → green → refactor) — **separate subagent**
-  2. Adversarial review (subagent finds bugs/gaps) — **separate subagent**
-  3. User-perspective review (workflow scenarios a real QE lead would trigger) — **separate subagent**
-  4. Security/logic review (OWASP, references, schema versioning, I/O safety) — **combined with step 3**
-  5. Simplify (flatten nesting, remove dead code, ask "can a junior read this in 30 seconds?") — **separate subagent**
-  6. Deferred issues tracking (unresolved findings → `claude-memory/notes.md`)
-  - **RULE:** Each step is a SEPARATE subagent call. Never combine all steps into one invocation. Opus plans fixes between steps.
+- **After green, before commit: perform the completion workflow using the model orchestration below.**
+
+## Model Orchestration
+
+| Role | Model | Responsibility |
+|------|-------|----------------|
+| **Orchestrator + Planner** | Opus | Plan each item, define test specs, triage findings, gate quality |
+| **Implementor** | Sonnet (subagent) | Write tests (RED), write code (GREEN), refactor, fix findings |
+| **Adversarial Reviewer** | GPT-5.4 (subagent) | Find bugs, contract violations, security issues, design gaps |
+
+### Workflow per work item (Opus orchestrates):
+
+1. **Plan** (Opus): Define scope, test specifications, acceptance criteria
+2. **Implement** (Sonnet subagent): TDD — failing tests → implementation → refactor
+3. **Adversarial Review** (GPT-5.4 subagent): Review the diff covering ALL of:
+   - Bugs, contract violations, design gaps
+   - Security/logic (OWASP, schema versioning, I/O safety, references)
+   - User-perspective (workflow scenarios a real QE lead would trigger)
+4. **Fix Loop**: If issues found →
+   - Opus triages findings (accept / defer)
+   - Sonnet fixes accepted findings
+   - GPT-5.4 re-reviews until clean (full scope again, not just fixes)
+5. **Simplify** (Opus): Flatten nesting, remove dead code, ask "can a junior read this in 30 seconds?"
+6. **Deferred issues** (Opus): Unresolved/deferred findings → `claude-memory/notes.md` with source and rationale
+7. **Present to user**: Summary of implementation, tests passing, review outcome, deferred items
+8. **Manual adversarial review** (user): User reviews and may request further changes
+9. **Commit**: Only after user approves — single commit per work item
+
+### Rules:
+- NO commit lands until the user completes their manual adversarial review
+- Adversarial review loops until clean — never skip re-review after fixes
+- The adversarial review prompt must explicitly request all three lenses (bugs, security, user-perspective)
+- Simplification happens AFTER the review loop is clean, not before
+- Deferred findings go to `claude-memory/notes.md` with source, severity, and rationale
+- One commit per work item (all TDD + fixes + simplification in one commit)
+- Each subagent call is separate — never combine planning, implementation, and review in one invocation
 
 ## Architecture Guardrails
 

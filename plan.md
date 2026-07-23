@@ -691,27 +691,40 @@ Phase 4 (T13–T16) requires both Phase 2 and Phase 3.
 **Trigger:** After real-model testing with valid API keys.
 **Goal:** Validate Skuld against real LLM responses, harden prompt security, and add retry resilience.
 
-### v0.3.0 Scope
+### v0.3.0 Scope (prioritized by impact + learning value)
 
-| # | Item | Depends on | Effort |
-|---|------|-----------|--------|
-| V2-5 | Integration tests: truncated/budget-exceeded with real providers | API keys | Small |
-| V2-12 | Prompt injection tests (malicious story/AC content) | None | Small |
-| D-V2-1-1 | SDK exception granularity (retryable vs permanent) + retry logic | None | Medium |
-| D-V2-1-2 | JSON schema validation on LLM response content | None | Small |
-| D-V2-PROMPT-1 | Validate Anthropic cache effectiveness with real usage counters | API keys | Small |
-| V2-9 | Exit code 3 for environment errors vs input errors | None | Small |
-| LOW-fix | Deduplicate same-model warning (loader vs pipeline) | None | Trivial |
+| Priority | Item(s) | Description | Depends on | Effort |
+|:---:|---------|-------------|:---:|--------|
+| 1 | D-V2-1-1 | Retry logic + retryable vs permanent error classification | None | Medium |
+| 2 | V2-12 | Prompt injection tests (malicious story/AC content) | None | Small |
+| 3 | V2-9 + LOW-fix | Exit code 3 for env errors + deduplicate same-model warning | None | Small |
+| 4 | V2-5 | Real-provider truncation/budget integration tests | D-V2-1-1, API keys | Small |
+| 5 | D-V2-1-2 | JSON schema validation on LLM response content | V2-5 | Small |
+| 6 | D-V2-PROMPT-1 | Validate Anthropic cache effectiveness with real counters | V2-5 | Small |
 
 ### v0.3.0 Sequencing
 
-1. **V2-12** — Prompt injection tests (no API key needed, can start immediately)
-2. **D-V2-1-1** — Retry logic with retryable/permanent error classification
-3. **V2-9** — Exit code 3 for environment errors
-4. **LOW-fix** — Deduplicate same-model warning
-5. **V2-5** — Real-provider truncation/budget integration tests (needs keys)
-6. **D-V2-1-2** — JSON schema validation on LLM responses (needs keys for realistic input)
-7. **D-V2-PROMPT-1** — Cache effectiveness validation (needs keys)
+**Phase A — No API keys required (items 1–3, parallelizable):**
+
+1. **D-V2-1-1** — Retry logic with exponential backoff, error classification (retryable/permanent/env)
+2. **V2-12** — Prompt injection tests (adversarial story/AC content against XML fences)
+3. **V2-9 + LOW-fix** — Exit code 3 for environment errors; deduplicate same-model warning (merged deliverable)
+
+**Phase B — API keys required (items 4–6, strictly ordered):**
+
+4. **V2-5** — Real-provider truncation/budget integration tests (depends on D-V2-1-1)
+5. **D-V2-1-2** — JSON schema validation on real LLM responses (depends on V2-5)
+6. **D-V2-PROMPT-1** — Cache effectiveness validation with Anthropic counters (depends on V2-5)
+
+### v0.3.0 Dependency Graph
+
+```
+D-V2-1-1 (retry) ──────────────┐
+                                ├──► V2-5 (real-provider tests) ──┬──► D-V2-1-2 (schema validation)
+                                │                                 └──► D-V2-PROMPT-1 (cache counters)
+V2-12 (injection tests) ───────┘ (independent, parallel with P1)
+V2-9 + LOW-fix ────────────────── (independent, parallel with P1/P2)
+```
 
 ### v0.3.0 Exit Criteria
 
